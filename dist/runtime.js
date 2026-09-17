@@ -1,5 +1,5 @@
-import { M as l, a as b, d as v } from "./types-YYypkfS4.js";
-const k = 250;
+import { M as l, a as g, d as k } from "./types-YYypkfS4.js";
+const v = 250;
 class S {
   constructor(e) {
     this.host = e;
@@ -111,7 +111,7 @@ class S {
     return this.phase === "idle" ? this.totalSeconds : this.deadlineAt == null ? Math.max(0, this.totalSeconds - this.pausedElapsed) : Math.max(0, Math.ceil((this.deadlineAt - Date.now()) / 1e3));
   }
   startTicking() {
-    this.stopTicking(), this.interval = setInterval(() => this.tick(), k);
+    this.stopTicking(), this.interval = setInterval(() => this.tick(), v);
   }
   stopTicking() {
     this.interval != null && (clearInterval(this.interval), this.interval = null);
@@ -143,11 +143,11 @@ class S {
     for (const s of this.reminders) {
       const i = s.intervalMinutes * 60;
       if (i <= 0) continue;
-      const r = Math.floor(e / i);
-      if (r < 1) continue;
-      const a = `${s.id}:${r}`;
-      if (!this.firedReminderKeys.has(a))
-        return this.firedReminderKeys.add(a), s;
+      const a = Math.floor(e / i);
+      if (a < 1) continue;
+      const n = `${s.id}:${a}`;
+      if (!this.firedReminderKeys.has(n))
+        return this.firedReminderKeys.add(n), s;
     }
     return null;
   }
@@ -180,7 +180,7 @@ class S {
       }
   }
 }
-class T {
+class A {
   constructor(e) {
     this.host = e;
   }
@@ -194,19 +194,19 @@ class T {
     const s = [];
     for (const i of e.tasks) {
       if (i === null || typeof i != "object" || typeof i.id != "string" || i.id.length === 0 || typeof i.text != "string" || i.text.length === 0 || i.text.length > l || typeof i.done != "boolean") return;
-      let r = null;
+      let a = null;
       if (e.version === 1)
-        r = i.done ? Date.now() : null;
+        a = i.done ? Date.now() : null;
       else if (e.version === 2) {
-        const a = i;
-        if (a.done) {
-          if (typeof a.doneAt != "number" || !Number.isFinite(a.doneAt)) return;
-          r = a.doneAt;
-        } else if (a.doneAt !== null)
+        const n = i;
+        if (n.done) {
+          if (typeof n.doneAt != "number" || !Number.isFinite(n.doneAt)) return;
+          a = n.doneAt;
+        } else if (n.doneAt !== null)
           return;
       } else
         return;
-      s.push({ id: i.id, text: i.text, done: i.done, doneAt: r });
+      s.push({ id: i.id, text: i.text, done: i.done, doneAt: a });
     }
     this.tasks = s, this.emit();
   }
@@ -231,13 +231,29 @@ class T {
   add(e) {
     if (typeof e != "string") return;
     const s = e.trim();
-    s.length === 0 || s.length > l || this.tasks.length >= b || (this.tasks = [...this.tasks, { id: crypto.randomUUID(), text: s, done: !1, doneAt: null }], this.commit());
+    s.length === 0 || s.length > l || this.tasks.length >= g || (this.tasks = [...this.tasks, { id: crypto.randomUUID(), text: s, done: !1, doneAt: null }], this.commit());
   }
   toggle(e) {
     this.tasks.every((s) => s.id !== e) || (this.tasks = this.tasks.map((s) => s.id !== e ? s : s.done ? { ...s, done: !1, doneAt: null } : { ...s, done: !0, doneAt: Date.now() }), this.commit());
   }
   remove(e) {
     this.tasks.every((s) => s.id !== e) || (this.tasks = this.tasks.filter((s) => s.id !== e), this.commit());
+  }
+  /**
+   * Reorder by the complete desired id sequence. Must be an exact permutation
+   * of the current task ids: a stale view that missed an add or delete would
+   * otherwise resurrect or drop tasks by rebuilding the array from its own
+   * outdated picture. Anything not an exact match is a silent no-op — same
+   * stance as unknown ids in toggle/remove.
+   */
+  reorder(e) {
+    if (e.length !== this.tasks.length) return;
+    const s = new Map(this.tasks.map((n) => [n.id, n])), i = [], a = /* @__PURE__ */ new Set();
+    for (const n of e) {
+      if (a.has(n) || !s.has(n)) return;
+      a.add(n), i.push(s.get(n));
+    }
+    this.tasks = i, this.commit();
   }
   // ---------------------------------------------------------------- internals
   persisted() {
@@ -257,7 +273,7 @@ class T {
       }
   }
 }
-const u = "session", m = "tasks", p = "activeTab", A = "julius-workspace-features.defaultMinutes", g = "julius-workspace-features.inheritTheme", w = "julius-workspace-features.main";
+const u = "session", m = "tasks", p = "activeTab", T = "julius-workspace-features.defaultMinutes", y = "julius-workspace-features.inheritTheme", w = "julius-workspace-features.main";
 function R(t) {
   if (!t || typeof t != "object" || Array.isArray(t))
     throw new Error("Timer actions must be JSON objects.");
@@ -309,6 +325,10 @@ function I(t) {
       if (typeof e.id == "string" && e.id.length > 0)
         return { type: e.type, id: e.id };
       break;
+    case "reorder":
+      if (Array.isArray(e.ids) && e.ids.length <= g && e.ids.every((s) => typeof s == "string" && s.length > 0))
+        return { type: e.type, ids: e.ids };
+      break;
   }
   throw new Error("Invalid tasks action.");
 }
@@ -321,8 +341,8 @@ function f(t) {
 }
 async function c(t, e) {
   const [s, i] = await Promise.all([
-    t.api.storage.get(A),
-    t.api.storage.get(g)
+    t.api.storage.get(T),
+    t.api.storage.get(y)
   ]);
   e.snapshot().phase === "idle" && typeof s == "number" && Number.isFinite(s) && s >= 1 && s <= 480 && e.setDuration(s), typeof i == "boolean" && e.setInheritTheme(i);
 }
@@ -357,73 +377,73 @@ async function M(t, e, s) {
       await c(t, e);
       break;
     case "setInheritTheme":
-      await t.api.storage.set(g, i.value), e.setInheritTheme(i.value);
+      await t.api.storage.set(y, i.value), e.setInheritTheme(i.value);
       break;
   }
   return e.snapshot();
 }
 let o = null, d = null;
-const D = v({
+const D = k({
   async activate(t) {
     const e = new S({
       // Persistence and notification failures should not stop the clock that
       // produced them. Both services report independently through host status.
-      save: (n) => {
-        t.api.storage.set(u, n).catch(() => {
+      save: (r) => {
+        t.api.storage.set(u, r).catch(() => {
         });
       },
-      notify: (n) => {
-        t.api.notifications.show(n).catch(() => {
+      notify: (r) => {
+        t.api.notifications.show(r).catch(() => {
         });
       }
-    }), s = new T({
-      save: (n) => {
-        t.api.storage.set(m, n).catch(() => {
+    }), s = new A({
+      save: (r) => {
+        t.api.storage.set(m, r).catch(() => {
         });
       }
     });
     let i = "timer";
     try {
-      const n = await t.api.storage.get(u);
-      e.restore(n);
+      const r = await t.api.storage.get(u);
+      e.restore(r);
     } catch {
     }
     try {
-      const n = await t.api.storage.get(m);
-      s.restore(n);
+      const r = await t.api.storage.get(m);
+      s.restore(r);
     } catch {
     }
     try {
-      const n = await t.api.storage.get(p);
-      i = n === void 0 ? "timer" : f({ tab: n });
+      const r = await t.api.storage.get(p);
+      i = r === void 0 ? "timer" : f({ tab: r });
     } catch {
       i = "timer";
     }
     await c(t, e).catch(() => {
     });
-    const r = () => t.views.publish(w, {
+    const a = () => t.views.publish(w, {
       activeTab: i,
       timer: e.snapshot(),
       tasks: s.snapshot()
     });
     o = e, d = s;
-    const a = e.subscribe(() => {
-      r().catch(() => {
+    const n = e.subscribe(() => {
+      a().catch(() => {
       });
-    }), y = s.subscribe(() => {
-      r().catch(() => {
+    }), b = s.subscribe(() => {
+      a().catch(() => {
       });
     });
     t.subscriptions.push(
-      { dispose: a },
-      { dispose: y },
+      { dispose: n },
+      { dispose: b },
       { dispose: () => e.dispose() },
       { dispose: () => s.dispose() }
     ), t.registerCommand("julius-workspace-features.timer.start", async () => {
       await c(t, e).catch(() => {
       }), e.start();
-    }), t.registerCommand("julius-workspace-features.timer.pause", () => e.pause()), t.registerCommand("julius-workspace-features.timer.reset", () => e.reset()), t.registerRequest("timerAction", (n) => M(t, e, n)), t.registerRequest("tasksAction", async (n) => {
-      const h = I(n);
+    }), t.registerCommand("julius-workspace-features.timer.pause", () => e.pause()), t.registerCommand("julius-workspace-features.timer.reset", () => e.reset()), t.registerRequest("timerAction", (r) => M(t, e, r)), t.registerRequest("tasksAction", async (r) => {
+      const h = I(r);
       switch (h.type) {
         case "add":
           s.add(h.text);
@@ -434,9 +454,12 @@ const D = v({
         case "remove":
           s.remove(h.id);
           break;
+        case "reorder":
+          s.reorder(h.ids);
+          break;
       }
       return s.snapshot();
-    }), t.registerRequest("selectTab", async (n) => (i = f(n), await t.api.storage.set(p, i), await r(), i)), await r();
+    }), t.registerRequest("selectTab", async (r) => (i = f(r), await t.api.storage.set(p, i), await a(), i)), await a();
   },
   deactivate() {
     o?.dispose(), o = null, d?.dispose(), d = null;
