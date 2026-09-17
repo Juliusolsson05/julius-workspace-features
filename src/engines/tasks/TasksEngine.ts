@@ -49,12 +49,15 @@ export class TasksEngine {
         // a personal list. An open task correctly starts at null.
         doneAt = task.done ? Date.now() : null
       } else if (data.version === 2) {
+        // The version guard above already discriminated the union at runtime;
+        // the cast only re-narrows the element type the loop variable lost.
+        const row = task as Task
         // Incoherent stamps reject the whole restore rather than being silently
         // normalized: doneAt must be a finite epoch exactly when done is true.
-        if (task.done) {
-          if (typeof task.doneAt !== 'number' || !Number.isFinite(task.doneAt)) return
-          doneAt = task.doneAt
-        } else if (task.doneAt !== null) {
+        if (row.done) {
+          if (typeof row.doneAt !== 'number' || !Number.isFinite(row.doneAt)) return
+          doneAt = row.doneAt
+        } else if (row.doneAt !== null) {
           return
         }
       } else {
