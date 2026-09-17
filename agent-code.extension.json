@@ -1,0 +1,65 @@
+{
+  "id": "julius-workspace-features",
+  "name": "Workspace Features",
+  "description": "One lane with tabs: the focus timer (ported from agent-code-timer) and a minimal task list. Keeps running when the panel is closed.",
+  "version": "0.1.0",
+  "apiVersion": 2,
+  "entry": "dist/runtime.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "id": "julius-workspace-features.open",
+        "title": "Open Workspace Features",
+        "keywords": [
+          "timer",
+          "focus",
+          "pomodoro",
+          "countdown",
+          "tasks",
+          "todo"
+        ]
+      },
+      {
+        "id": "julius-workspace-features.timer.start",
+        "title": "Start Timer"
+      },
+      {
+        "id": "julius-workspace-features.timer.pause",
+        "title": "Pause Timer"
+      },
+      {
+        "id": "julius-workspace-features.timer.reset",
+        "title": "Reset Timer"
+      }
+    ],
+    "views": [
+      {
+        "id": "julius-workspace-features.main",
+        "title": "Workspace",
+        "mount": "panel",
+        "entry": "dist/view.js"
+      }
+    ],
+    "settings": [
+      {
+        "id": "julius-workspace-features.inheritTheme",
+        "title": "Inherit Agent Code theme",
+        "type": "boolean",
+        "default": false
+      },
+      {
+        "id": "julius-workspace-features.defaultMinutes",
+        "title": "Default duration (minutes)",
+        "type": "number",
+        "default": 30
+      }
+    ]
+  },
+  "permissions": [
+    "sessions.observe",
+    "notifications.show"
+  ]
+}
