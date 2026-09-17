@@ -1,6 +1,6 @@
-import { d as b } from "./runtime-D_epeM7Z.js";
-const v = 250;
-class k {
+import { M as c, a as b, d as v } from "./types-YYypkfS4.js";
+const k = 250;
+class S {
   constructor(e) {
     this.host = e;
   }
@@ -111,7 +111,7 @@ class k {
     return this.phase === "idle" ? this.totalSeconds : this.deadlineAt == null ? Math.max(0, this.totalSeconds - this.pausedElapsed) : Math.max(0, Math.ceil((this.deadlineAt - Date.now()) / 1e3));
   }
   startTicking() {
-    this.stopTicking(), this.interval = setInterval(() => this.tick(), v);
+    this.stopTicking(), this.interval = setInterval(() => this.tick(), k);
   }
   stopTicking() {
     this.interval != null && (clearInterval(this.interval), this.interval = null);
@@ -180,7 +180,6 @@ class k {
       }
   }
 }
-const S = 256, c = 200;
 class T {
   constructor(e) {
     this.host = e;
@@ -220,7 +219,7 @@ class T {
   add(e) {
     if (typeof e != "string") return;
     const s = e.trim();
-    s.length === 0 || s.length > c || this.tasks.length >= S || (this.tasks = [...this.tasks, { id: crypto.randomUUID(), text: s, done: !1 }], this.commit());
+    s.length === 0 || s.length > c || this.tasks.length >= b || (this.tasks = [...this.tasks, { id: crypto.randomUUID(), text: s, done: !1 }], this.commit());
   }
   toggle(e) {
     this.tasks.every((s) => s.id !== e) || (this.tasks = this.tasks.map(
@@ -248,7 +247,7 @@ class T {
       }
   }
 }
-const u = "session", m = "tasks", p = "activeTab", R = "julius-workspace-features.defaultMinutes", g = "julius-workspace-features.inheritTheme", w = "julius-workspace-features.main";
+const u = "session", m = "tasks", p = "activeTab", w = "julius-workspace-features.defaultMinutes", g = "julius-workspace-features.inheritTheme", R = "julius-workspace-features.main";
 function A(t) {
   if (!t || typeof t != "object" || Array.isArray(t))
     throw new Error("Timer actions must be JSON objects.");
@@ -312,7 +311,7 @@ function f(t) {
 }
 async function l(t, e) {
   const [s, i] = await Promise.all([
-    t.api.storage.get(R),
+    t.api.storage.get(w),
     t.api.storage.get(g)
   ]);
   e.snapshot().phase === "idle" && typeof s == "number" && Number.isFinite(s) && s >= 1 && s <= 480 && e.setDuration(s), typeof i == "boolean" && e.setInheritTheme(i);
@@ -354,9 +353,9 @@ async function M(t, e, s) {
   return e.snapshot();
 }
 let d = null, o = null;
-const D = b({
+const D = v({
   async activate(t) {
-    const e = new k({
+    const e = new S({
       // Persistence and notification failures should not stop the clock that
       // produced them. Both services report independently through host status.
       save: (n) => {
@@ -392,7 +391,7 @@ const D = b({
     }
     await l(t, e).catch(() => {
     });
-    const r = () => t.views.publish(w, {
+    const r = () => t.views.publish(R, {
       activeTab: i,
       timer: e.snapshot(),
       tasks: s.snapshot()
@@ -427,9 +426,7 @@ const D = b({
           break;
       }
       return s.snapshot();
-    }), t.registerRequest("selectTab", async (n) => (i = f(n), t.api.storage.set(p, i).catch(() => {
-    }), r().catch(() => {
-    }), i)), await r();
+    }), t.registerRequest("selectTab", async (n) => (i = f(n), await t.api.storage.set(p, i), await r(), i)), await r();
   },
   deactivate() {
     d?.dispose(), d = null, o?.dispose(), o = null;
