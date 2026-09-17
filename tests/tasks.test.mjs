@@ -98,7 +98,16 @@ test('restore accepts a valid v1 payload and ignores anything malformed', () => 
   engine.dispose()
 
   const garbage = fixture()
-  for (const invalid of [undefined, null, {}, { version: 99, tasks: [] }, { version: 1, tasks: 'nope' }, { version: 1, tasks: [{ id: 'x' }] }]) {
+  for (const invalid of [
+    undefined,
+    null,
+    {},
+    { version: 99, tasks: [] },
+    { version: 1, tasks: 'nope' },
+    { version: 1, tasks: [{ id: 'x' }] },
+    { version: 1, tasks: [{ id: 'x', text: 'y'.repeat(201), done: false }] },
+    { version: 1, tasks: [{ id: 'x', text: 'y', done: 'yes' }] },
+  ]) {
     garbage.engine.restore(invalid)
   }
   assert.deepEqual(garbage.engine.snapshot().tasks, [])

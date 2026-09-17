@@ -5,10 +5,18 @@ import runtime from '../src/runtime.ts'
 
 const VIEW_ID = 'julius-workspace-features.main'
 
-const disposables = []
+// Fixtures are tracked as live references, not spread snapshots: activate()
+// pushes disposables into the subscriptions array AFTER context() returns, so
+// a spread-at-creation capture is always empty and the disposal loop below
+// would be dead code. Keeping the array reference makes the host-style
+// disposal path (subscriptions) actually run in teardown, alongside
+// deactivate()'s engine disposal.
+const fixtures = []
 afterEach(async () => {
   await runtime.deactivate?.()
-  for (const disposable of disposables.splice(0)) await disposable.dispose()
+  for (const fixture of fixtures.splice(0)) {
+    for (const disposable of fixture.subscriptions.splice(0)) await disposable.dispose()
+  }
 })
 
 function context(initial = {}) {
@@ -37,7 +45,7 @@ function context(initial = {}) {
       publications.push({ viewId, state: structuredClone(state) })
     } },
   }
-  disposables.push(...subscriptions)
+  fixtures.push({ subscriptions })
   return { value, storage, commands, requests, publications, notifications }
 }
 
@@ -166,6 +174,17 @@ test('tasks persist, publish through the combined state, and survive reactivatio
     ['write'],
   )
   assert.deepEqual(fixture.storage.get('tasks').tasks, [{ id: added.id, text: 'write', done: true }])
+
+  // Real reactivation, not just a seeded store: tear the runtime down, bring
+  // it back over the same persisted bytes, and require the tasks to return.
+  await runtime.deactivate?.()
+  const reborn = context(Object.fromEntries(fixture.storage))
+  await runtime.activate(reborn.value)
+  assert.deepEqual(
+    reborn.publications.at(-1).state.tasks.tasks.map(task => task.text),
+    ['write'],
+  )
+  assert.equal(reborn.publications.at(-1).state.tasks.tasks[0].done, true)
 
   for (const invalid of [
     null,
