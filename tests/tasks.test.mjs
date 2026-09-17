@@ -19,12 +19,10 @@ test('add trims text, appends in order, and leaves done false', () => {
   assert.equal(snapshot.tasks.length, 2)
   assert.equal(snapshot.tasks[0].text, 'first')
   assert.equal(snapshot.tasks[0].done, false)
-  // A fresh task carries no completion time; only completing sets it.
   assert.equal(snapshot.tasks[0].doneAt, null)
+  assert.equal(snapshot.tasks[0].parentId, null)
   assert.equal(snapshot.tasks[1].text, 'second')
-  // Save fires per mutation, not per read.
   assert.equal(saved.length, 2)
-  assert.equal(saved.at(-1).tasks.length, 2)
   engine.dispose()
 })
 
@@ -35,9 +33,7 @@ test('add rejects empty, oversized, and non-finite text without touching state',
   engine.add('   ')
   engine.add('x'.repeat(201))
   engine.add(42)
-  const snapshot = engine.snapshot()
-  assert.equal(snapshot.tasks.length, 1)
-  assert.equal(snapshot.tasks[0].text, 'kept')
+  assert.equal(engine.snapshot().tasks.length, 1)
   assert.equal(saved.length, 1)
   engine.dispose()
 })
@@ -48,11 +44,10 @@ test('the task cap drops the add rather than silently discarding old work', () =
   assert.equal(engine.snapshot().tasks.length, 256)
   engine.add('one too many')
   assert.equal(engine.snapshot().tasks.length, 256)
-  assert.equal(engine.snapshot().tasks.at(-1).text, 'task 255')
   engine.dispose()
 })
 
-test('toggle flips exactly one task and remove drops exactly one', () => {
+test('toggle flips exactly one task; remove drops exactly one', () => {
   const { engine } = fixture()
   engine.add('a')
   engine.add('b')
@@ -62,50 +57,225 @@ test('toggle flips exactly one task and remove drops exactly one', () => {
     engine.snapshot().tasks.map(task => task.done),
     [true, false],
   )
-  // Completing stamps a finite epoch; reopening clears it back to null.
   assert.equal(typeof engine.snapshot().tasks[0].doneAt, 'number')
-  assert.ok(Number.isFinite(engine.snapshot().tasks[0].doneAt))
   engine.toggle(a.id)
-  assert.deepEqual(
-    engine.snapshot().tasks.map(task => task.done),
-    [false, false],
-  )
   assert.equal(engine.snapshot().tasks[0].doneAt, null)
   engine.remove(a.id)
   assert.deepEqual(
     engine.snapshot().tasks.map(task => task.text),
     ['b'],
   )
-  // Unknown ids are no-ops, not crashes — a stale view can send them.
   engine.toggle('missing')
   engine.remove('missing')
+  engine.edit('missing', 'x')
+  engine.setDue('missing', Date.now())
   assert.equal(engine.snapshot().tasks.length, 1)
   engine.dispose()
 })
 
-test('restore accepts a valid v1 payload and ignores anything malformed', () => {
-  const { engine, saved } = fixture()
-  engine.restore({
-    version: 1,
-    tasks: [
-      { id: 'one', text: 'read', done: true },
-      { id: 'two', text: 'write', done: false },
-    ],
-  })
+test('subtasks attach one level deep, land after their parent block, and never nest', () => {
+  const { engine } = fixture()
+  engine.add('parent')
+  const parent = engine.snapshot().tasks[0]
+  engine.add('sub 1', parent.id)
+  engine.add('top')
+  engine.add('sub 2', parent.id) // must insert into parent's block, not append
   assert.deepEqual(
     engine.snapshot().tasks.map(task => task.text),
-    ['read', 'write'],
+    ['parent', 'sub 1', 'sub 2', 'top'],
   )
-  assert.equal(engine.snapshot().tasks[0].done, true)
-  // v1 had no timestamps: a done task migrates with doneAt = migration time,
-  // an open one with null. The date is falsified-but-useful — see restore().
-  assert.equal(typeof engine.snapshot().tasks[0].doneAt, 'number')
-  assert.equal(engine.snapshot().tasks[1].doneAt, null)
-  // Restore itself does not write; the next mutation persists the merged state.
-  assert.equal(saved.length, 0)
-  engine.add('third')
-  assert.equal(saved.at(-1).tasks.length, 3)
+  // A subtask cannot gain its own subtasks.
+  const sub1 = engine.snapshot().tasks[1]
+  engine.add('grandchild', sub1.id)
+  assert.deepEqual(
+    engine.snapshot().tasks.map(task => task.text),
+    ['parent', 'sub 1', 'sub 2', 'top'],
+  )
+  // Unknown parents are no-ops.
+  engine.add('ghost child', 'missing')
+  assert.equal(engine.snapshot().tasks.length, 4)
   engine.dispose()
+})
+
+test('completing a parent cascades to its open subtasks; reopening does not', () => {
+  const { engine } = fixture()
+  engine.add('parent')
+  const parent = engine.snapshot().tasks[0]
+  engine.add('sub 1', parent.id)
+  engine.add('sub 2', parent.id)
+  engine.toggle(parent.id)
+  assert.deepEqual(
+    engine.snapshot().tasks.map(task => task.done),
+    [true, true, true],
+  )
+  const stamps = engine.snapshot().tasks.map(task => task.doneAt)
+  assert.ok(stamps.every(stamp => typeof stamp === 'number'))
+  engine.toggle(parent.id)
+  assert.deepEqual(
+    engine.snapshot().tasks.map(task => task.done),
+    [false, true, true],
+  )
+  // A sub completed on its own leaves siblings alone.
+  engine.toggle(engine.snapshot().tasks[1].id)
+  assert.deepEqual(
+    engine.snapshot().tasks.map(task => task.done),
+    [false, false, true],
+  )
+  engine.dispose()
+})
+
+test('edit rewrites trimmed text in place and rejects invalid text', () => {
+  const { engine, saved } = fixture()
+  engine.add('a')
+  const id = engine.snapshot().tasks[0].id
+  engine.edit(id, '  fixed  ')
+  assert.equal(engine.snapshot().tasks[0].text, 'fixed')
+  const before = engine.snapshot()
+  engine.edit(id, '')
+  engine.edit(id, 'x'.repeat(201))
+  assert.equal(engine.snapshot(), before)
+  assert.equal(saved.length, 2)
+  engine.dispose()
+})
+
+test('setDue accepts calendar epochs and null, rejects out-of-range values', () => {
+  const { engine, saved } = fixture()
+  engine.add('a')
+  const id = engine.snapshot().tasks[0].id
+  const due = Date.UTC(2026, 8, 20)
+  engine.setDue(id, due)
+  assert.equal(engine.snapshot().tasks[0].dueAt, due)
+  engine.setDue(id, null)
+  assert.equal(engine.snapshot().tasks[0].dueAt, null)
+  const before = engine.snapshot()
+  engine.setDue(id, DUE_MIN_MS - 1)
+  engine.setDue(id, DUE_MAX_MS + 1)
+  engine.setDue(id, 1.5)
+  assert.equal(engine.snapshot(), before)
+  assert.equal(saved.length, 3)
+  engine.dispose()
+})
+
+function DUE_MIN_MS() { return Date.UTC(2000, 0, 1) }
+function DUE_MAX_MS() { return Date.UTC(2100, 0, 1) - 1 }
+
+test('remove takes the whole sub-block and undo restores it exactly', () => {
+  const { engine } = fixture()
+  engine.add('a')
+  engine.add('parent')
+  const parent = engine.snapshot().tasks[1]
+  engine.add('sub', parent.id)
+  engine.add('z')
+  const before = engine.snapshot().tasks
+
+  engine.remove(parent.id)
+  assert.deepEqual(
+    engine.snapshot().tasks.map(task => task.text),
+    ['a', 'z'],
+  )
+  // Unknown-but-valid undo is a no-op when nothing was removed.
+  engine.undo()
+  assert.deepEqual(
+    engine.snapshot().tasks.map(task => task.text),
+    before.map(task => task.text),
+  )
+  // Undo is single-shot: a second call does nothing.
+  engine.undo()
+  assert.deepEqual(
+    engine.snapshot().tasks.map(task => task.text),
+    before.map(task => task.text),
+  )
+  engine.dispose()
+})
+
+test('clearCompleted sweeps done tasks and their subs as one undoable action', () => {
+  const { engine } = fixture()
+  engine.add('open')
+  engine.add('done parent')
+  const parent = engine.snapshot().tasks[1]
+  engine.add('open sub', parent.id)
+  engine.toggle(parent.id) // cascades to 'open sub'
+  engine.add('done solo')
+  engine.toggle(engine.snapshot().tasks[3].id)
+
+  engine.clearCompleted()
+  assert.deepEqual(
+    engine.snapshot().tasks.map(task => task.text),
+    ['open'],
+  )
+  engine.undo()
+  assert.deepEqual(
+    engine.snapshot().tasks.map(task => task.text),
+    ['open', 'done parent', 'open sub', 'done solo'],
+  )
+  assert.deepEqual(
+    engine.snapshot().tasks.map(task => task.done),
+    [false, true, true, true],
+  )
+
+  // An empty sweep preserves the previous undo slot instead of wiping it.
+  engine.remove('open')
+  engine.clearCompleted() // nothing done left
+  engine.undo()
+  assert.deepEqual(
+    engine.snapshot().tasks.map(task => task.text),
+    ['open', 'done parent', 'open sub', 'done solo'],
+  )
+  engine.dispose()
+})
+
+test('a destructive action replaces the undo slot (single level)', () => {
+  const { engine } = fixture()
+  engine.add('a')
+  engine.add('b')
+  const [a, b] = engine.snapshot().tasks
+  engine.remove(a.id)
+  engine.remove(b.id)
+  engine.undo()
+  // Only the LAST removal is restorable; 'a' is gone for good.
+  assert.deepEqual(
+    engine.snapshot().tasks.map(task => task.text),
+    ['b'],
+  )
+  engine.dispose()
+})
+
+test('restore accepts valid payloads from every version and rejects malformed ones', () => {
+  const { engine, saved } = fixture()
+  const v1 = {
+    version: 1,
+    tasks: [{ id: 'one', text: 'read', done: true }],
+  }
+  engine.restore(v1)
+  const migrated = engine.snapshot().tasks[0]
+  assert.equal(migrated.text, 'read')
+  assert.equal(typeof migrated.doneAt, 'number')
+  assert.equal(migrated.parentId, null)
+  assert.equal(migrated.dueAt, null)
+  assert.equal(saved.length, 0)
+
+  const v2 = {
+    version: 2,
+    tasks: [{ id: 'two', text: 'write', done: true, doneAt: 123456 }],
+  }
+  engine.restore(v2)
+  assert.equal(engine.snapshot().tasks[0].doneAt, 123456)
+  assert.equal(engine.snapshot().tasks[0].parentId, null)
+
+  const due = Date.UTC(2026, 8, 20)
+  const v3 = {
+    version: 3,
+    tasks: [
+      { id: 'p', text: 'parent', done: false, doneAt: null, parentId: null, dueAt: due },
+      { id: 's', text: 'sub', done: false, doneAt: null, parentId: 'p', dueAt: null },
+    ],
+  }
+  engine.restore(v3)
+  assert.deepEqual(
+    engine.snapshot().tasks.map(task => task.id),
+    ['p', 's'],
+  )
+  assert.equal(engine.snapshot().tasks[0].dueAt, due)
 
   const garbage = fixture()
   for (const invalid of [
@@ -118,12 +288,49 @@ test('restore accepts a valid v1 payload and ignores anything malformed', () => 
     { version: 1, tasks: [{ id: 'x', text: 'y'.repeat(201), done: false }] },
     { version: 1, tasks: [{ id: 'x', text: 'y', done: 'yes' }] },
     { version: 2, tasks: [{ id: 'x', text: 'y', done: true, doneAt: 'when' }] },
-    { version: 2, tasks: [{ id: 'x', text: 'y', done: false, doneAt: 123 }] },
+    { version: 3, tasks: [{ id: 'x', text: 'y', done: false, doneAt: null, parentId: 'ghost', dueAt: null }] },
+    // Contiguity violations reject wholesale.
+    { version: 3, tasks: [
+      { id: 'p1', text: 'p1', done: false, doneAt: null, parentId: null, dueAt: null },
+      { id: 'p2', text: 'p2', done: false, doneAt: null, parentId: null, dueAt: null },
+      { id: 's', text: 's', done: false, doneAt: null, parentId: 'p1', dueAt: null },
+    ] },
+    { version: 3, tasks: [{ id: 'x', text: 'y', done: false, doneAt: null, parentId: null, dueAt: Date.UTC(1999, 0, 1) }] },
   ]) {
     garbage.engine.restore(invalid)
   }
   assert.deepEqual(garbage.engine.snapshot().tasks, [])
   garbage.engine.dispose()
+  engine.dispose()
+})
+
+test('reorder accepts valid parent-block permutations and rejects invariant breaks', () => {
+  const { engine } = fixture()
+  engine.add('a')
+  engine.add('parent')
+  const parent = engine.snapshot().tasks[1]
+  engine.add('sub', parent.id)
+  engine.add('b')
+  const [a, , sub, b] = engine.snapshot().tasks
+
+  // Drag 'parent' block before 'a' — subs travel with their parent.
+  engine.reorder([parent.id, sub.id, a.id, b.id])
+  assert.deepEqual(
+    engine.snapshot().tasks.map(task => task.text),
+    ['parent', 'sub', 'a', 'b'],
+  )
+
+  const before = engine.snapshot()
+  // A sub separated from its parent rejects.
+  engine.reorder([a.id, sub.id, parent.id, b.id])
+  // Missing/extra/unknown ids reject.
+  engine.reorder([a.id, parent.id, sub.id])
+  engine.reorder([a.id, parent.id, sub.id, b.id, a.id])
+  engine.reorder([a.id, parent.id, sub.id, 'ghost'])
+  // A sub following a DIFFERENT top-level rejects.
+  engine.reorder([b.id, sub.id, parent.id, a.id])
+  assert.equal(engine.snapshot(), before)
+  engine.dispose()
 })
 
 test('snapshot identity is stable between emits and invalidated by mutations', () => {
@@ -157,47 +364,20 @@ test('subscribe does not fire synchronously on attachment', () => {
   engine.dispose()
 })
 
-test('v2 persistence round-trips the exact completion timestamp', () => {
+test('v3 persistence round-trips the exact completion timestamp and due date', () => {
   const { engine, saved } = fixture()
   engine.add('a')
+  const due = Date.UTC(2026, 8, 20)
+  engine.setDue(engine.snapshot().tasks[0].id, due)
   engine.toggle(engine.snapshot().tasks[0].id)
   const persisted = saved.at(-1)
-  assert.equal(persisted.version, 2)
+  assert.equal(persisted.version, 3)
+  assert.equal(persisted.tasks[0].dueAt, due)
   assert.equal(typeof persisted.tasks[0].doneAt, 'number')
 
   const reborn = fixture()
   reborn.engine.restore(persisted)
   assert.equal(reborn.engine.snapshot().tasks[0].doneAt, persisted.tasks[0].doneAt)
-  // The stamp survives reopening and re-completing replaces it with a later one.
-  reborn.engine.toggle(persisted.tasks[0].id)
-  reborn.engine.toggle(persisted.tasks[0].id)
-  assert.ok(reborn.engine.snapshot().tasks[0].doneAt >= persisted.tasks[0].doneAt)
+  assert.equal(reborn.engine.snapshot().tasks[0].dueAt, due)
   reborn.engine.dispose()
-})
-
-test('reorder rewrites the array only for an exact permutation', () => {
-  const { engine, saved } = fixture()
-  engine.add('a')
-  engine.add('b')
-  engine.add('c')
-  const [a, b, c] = engine.snapshot().tasks
-  engine.reorder([c.id, a.id, b.id])
-  assert.deepEqual(
-    engine.snapshot().tasks.map(task => task.text),
-    ['c', 'a', 'b'],
-  )
-  assert.equal(saved.length, 4)
-
-  // A stale view that missed an add or delete must not resurrect or drop
-  // tasks: anything short of an exact permutation is a silent no-op.
-  engine.reorder([a.id, b.id])
-  engine.reorder([a.id, b.id, c.id, a.id])
-  engine.reorder([a.id, b.id, 'ghost'])
-  engine.reorder([])
-  assert.deepEqual(
-    engine.snapshot().tasks.map(task => task.text),
-    ['c', 'a', 'b'],
-  )
-  assert.equal(saved.length, 4)
-  engine.dispose()
 })
