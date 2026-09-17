@@ -1,5 +1,5 @@
-import { AnimatePresence, motion, Reorder } from 'framer-motion'
-import { useEffect, useRef, useState } from 'react'
+import { AnimatePresence, Reorder } from 'framer-motion'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent } from 'react'
 
 import type { JsonValue } from 'agent-code-extension-api'
@@ -7,6 +7,7 @@ import type { Task, TasksState } from '../../engines/tasks/types'
 import { MAX_TASK_TEXT_CHARS } from '../../engines/tasks/types'
 import { ContextMenu, type ContextMenuTarget } from '../shell/ContextMenu'
 import { Sfx } from '../sounds'
+import { TaskRow } from '../tasks/TaskRow'
 
 type SubTab = 'todo' | 'done'
 type DoneFilter = 'today' | 'week' | 'all'
@@ -23,28 +24,21 @@ function startOfToday(): number {
   return now.getTime()
 }
 
-/** A dim right-aligned stamp: the time for same-day completions, a short date
- *  for older ones. This is the only metadata the Done lane shows. */
-function formatDoneAt(doneAt: number): string {
-  const date = new Date(doneAt)
-  if (date.getTime() >= startOfToday()) {
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  }
-  return date.toLocaleDateString([], { month: 'short', day: 'numeric' })
-}
+// The undo toast's auto-dismiss handle. Module-level rather than a ref
+// because the toast outlives row re-renders and a ref keyed to the component
+// would leak timers across subtab switches.
+let undoToastTimer: number | null = null
 
 /**
- * The Tasks lane. Two subtabs over one published array:
+ * The Tasks lane — a complete basic todo application, nothing more.
  *
- *   To do — the input and the open lines. Click a line to complete it; drag a
- *           line to reorder; right-click for the context menu (Delete).
- *           Backspace on the empty input removes the last open task.
- *   Done  — completed lines, struck through, with a completion stamp and date
- *           filters. Click a line to reopen it; right-click for Delete.
+ *   To do — checkbox to complete, double-click to edit, drag to reorder,
+ *           right-click for due date / subtask / delete, Backspace on the
+ *           empty input removes the last open task, search filters.
+ *   Done  — completion stamps, date filters, Clear completed, search.
  *
- * There is no checkbox anywhere: the line itself is the toggle, one affordance
- * instead of two. Deletion is menu-only and therefore deliberate — the row's
- * click gesture stays non-destructive at full row size.
+ * Deletions (menu, clear, backspace) surface a 5s Undo toast backed by the
+ * engine's single-slot history.
  */
 export function TasksTab({
   state,
@@ -56,30 +50,55 @@ export function TasksTab({
   const [subTab, setSubTab] = useState<SubTab>('todo')
   const [doneFilter, setDoneFilter] = useState<DoneFilter>('all')
   const [draft, setDraft] = useState('')
+  const [query, setQuery] = useState('')
   const [menu, setMenu] = useState<ContextMenuTarget | null>(null)
+  const [dueEditingId, setDueEditingId] = useState<string | null>(null)
+  const [subInputParentId, setSubInputParentId] = useState<string | null>(null)
+  const [undoToast, setUndoToast] = useState<string | null>(null)
 
   // One shared voice for the lane, created lazily on first gesture so the
   // AudioContext is born inside a user activation (autoplay policy).
   const sfx = useRef<Sfx | null>(null)
+  const voice = () => (sfx.current ??= new Sfx())
 
-  const open = state.tasks.filter(task => !task.done)
-  // Newest completion first: the freshest items sit where the eye lands, and
-  // Today/7-day filters would otherwise force scrolling past stale history.
-  const done = state.tasks
-    .filter(task => task.done)
-    .sort((a, b) => (b.doneAt ?? 0) - (a.doneAt ?? 0))
-  const filtered = done.filter(task => {
+  const topLevel = useMemo(() => state.tasks.filter(task => task.parentId === null), [state.tasks])
+  const subsOf = useMemo(() => {
+    const byParent = new Map<string, Task[]>()
+    for (const task of state.tasks) {
+      if (task.parentId == null) continue
+      const bucket = byParent.get(task.parentId) ?? []
+      bucket.push(task)
+      byParent.set(task.parentId, bucket)
+    }
+    return byParent
+  }, [state.tasks])
+
+  const openTop = useMemo(() => topLevel.filter(task => !task.done), [topLevel])
+  const doneTop = useMemo(
+    () => topLevel.filter(task => task.done)
+      .sort((a, b) => (b.doneAt ?? 0) - (a.doneAt ?? 0)),
+    [topLevel],
+  )
+  const remaining = state.tasks.filter(task => !task.done).length
+
+  const needle = query.trim().toLowerCase()
+  const matches = (task: Task) => task.text.toLowerCase().includes(needle)
+  const visibleOpen = needle
+    ? openTop.filter(task => matches(task) || (subsOf.get(task.id) ?? []).some(matches))
+    : openTop
+  const visibleDone = needle ? doneTop.filter(matches) : doneTop
+
+  const filteredDone = visibleDone.filter(task => {
     if (doneFilter === 'all' || task.doneAt == null) return true
     return task.doneAt >= (doneFilter === 'today' ? startOfToday() : Date.now() - 7 * 86_400_000)
   })
 
   // ── Drag reorder ──────────────────────────────────────────────────────────
-  // framer's Reorder commits continuously through onReorder, but a request per
-  // drag frame would spam the runtime. So the drag lives in a local override:
-  // onReorder only updates the override, and the SINGLE engine mutation fires
-  // on drag end. The ref mirrors the override so the settle handler reads the
-  // final order without a stale closure; `dragging` distinguishes "published
-  // state changed" (adopt it) from "we are mid-drag" (the override wins).
+  // Dragging is disabled while a search is active: reordering a filtered view
+  // is how tasks end up somewhere the user did not see them land. Otherwise
+  // the drag lives in a local override (framer commits continuously, the
+  // runtime gets ONE request on drag end) and subs always travel with their
+  // parent because the drag values are top-level tasks only.
   const dragging = useRef(false)
   const dragOrderRef = useRef<Task[] | null>(null)
   const [dragOrder, setDragOrderState] = useState<Task[] | null>(null)
@@ -93,7 +112,7 @@ export function TasksTab({
       setDragOrderState(null)
     }
   }, [state.tasks])
-  const openView = dragOrder ?? open
+  const dragTopView = dragOrder ?? visibleOpen
 
   const settleDrag = () => {
     dragging.current = false
@@ -101,33 +120,62 @@ export function TasksTab({
     dragOrderRef.current = null
     setDragOrderState(null)
     if (!next) return
-    // The engine's reorder wants the FULL id permutation; done tasks keep
-    // their storage order behind the reordered open ones.
-    send({ type: 'reorder', ids: [...next.map(task => task.id), ...done.map(task => task.id)] })
+    // The full permutation: each parent id followed by its sub ids, so the
+    // engine's contiguity invariant holds by construction.
+    const ids: string[] = []
+    for (const parent of next) {
+      ids.push(parent.id)
+      for (const sub of subsOf.get(parent.id) ?? []) ids.push(sub.id)
+    }
+    for (const parent of topLevel) {
+      if (parent.done) {
+        ids.push(parent.id)
+        for (const sub of subsOf.get(parent.id) ?? []) ids.push(sub.id)
+      }
+    }
+    send({ type: 'reorder', ids })
+  }
+
+  // ── Actions with sound + undo plumbing ───────────────────────────────────
+  const flashUndo = (label: string) => {
+    setUndoToast(label)
+    if (undoToastTimer != null) window.clearTimeout(undoToastTimer)
+    undoToastTimer = window.setTimeout(() => setUndoToast(null), 5_000)
   }
 
   const toggle = (task: Task) => {
-    sfx.current ??= new Sfx()
-    // Sound on the click, not on the published round-trip: feedback must be
-    // immediate to feel physical.
-    if (task.done) sfx.current.taskReopen()
-    else sfx.current.taskComplete()
+    const wasDone = task.done
+    if (wasDone) voice().taskReopen()
+    else voice().taskComplete()
     send({ type: 'toggle', id: task.id })
   }
 
   const submit = () => {
     const trimmed = draft.trim()
     if (trimmed.length === 0) return
-    sfx.current ??= new Sfx()
-    sfx.current.taskAdd()
+    voice().taskAdd()
     send({ type: 'add', text: trimmed })
     setDraft('')
   }
 
-  const deleteFromMenu = (action: JsonValue) => {
-    sfx.current ??= new Sfx()
-    sfx.current.taskDelete()
-    send(action)
+  const deleteFromMenu = (task: { id: string }) => {
+    voice().taskDelete()
+    send({ type: 'remove', id: task.id })
+    flashUndo('Deleted')
+  }
+
+  const clearCompleted = () => {
+    if (doneTop.length === 0) return
+    voice().taskDelete()
+    send({ type: 'clearCompleted' })
+    flashUndo(`Cleared ${doneTop.length}`)
+  }
+
+  const undo = () => {
+    if (undoToastTimer != null) window.clearTimeout(undoToastTimer)
+    setUndoToast(null)
+    voice().taskAdd()
+    send({ type: 'undo' })
   }
 
   // Menu coordinates are relative to this lane root (position: relative) so
@@ -145,6 +193,21 @@ export function TasksTab({
     })
   }
 
+  const searchBox = (
+    <input
+      className="jwf-search"
+      type="search"
+      aria-label="Search tasks"
+      placeholder="Search"
+      value={query}
+      onChange={event => setQuery(event.target.value)}
+      onKeyDown={event => {
+        event.stopPropagation()
+        if (event.key === 'Escape') setQuery('')
+      }}
+    />
+  )
+
   return (
     <div className="jwf-tasks" ref={laneRef}>
       <div className="jwf-subtabs" role="tablist" aria-label="Task lists">
@@ -156,7 +219,7 @@ export function TasksTab({
           data-active={subTab === 'todo'}
           onClick={() => setSubTab('todo')}
         >
-          To do
+          To do{remaining > 0 ? ` · ${remaining}` : ''}
         </button>
         <button
           type="button"
@@ -168,42 +231,55 @@ export function TasksTab({
         >
           Done
         </button>
+        {searchBox}
       </div>
 
       {subTab === 'todo' ? (
         <>
           <Reorder.Group
             axis="y"
-            values={openView}
+            values={dragTopView}
             onReorder={next => setDragOrder(next)}
             className="jwf-task-list"
             as="div"
           >
             <AnimatePresence initial={false}>
-              {openView.map(task => (
-                <TaskRow
+              {dragTopView.map(task => (
+                <TaskBlock
                   key={task.id}
                   task={task}
+                  subs={subsOf.get(task.id) ?? []}
+                  subInputOpen={subInputParentId === task.id}
+                  onSubInputClose={() => setSubInputParentId(null)}
+                  dueEditingId={dueEditingId}
+                  onDueEditingDone={() => setDueEditingId(null)}
                   onToggle={toggle}
+                  onEdit={(edited, text) => send({ type: 'edit', id: edited.id, text })}
+                  onSetDue={(edited, dueAt) => send({ type: 'setDue', id: edited.id, dueAt })}
                   onMenu={openMenu}
-                  drag
+                  onAddSub={(text, parentId) => {
+                    voice().taskAdd()
+                    send({ type: 'add', text, parentId })
+                  }}
                   onDragState={active => { dragging.current = active }}
                   onDragSettled={settleDrag}
+                  drag={!needle}
                 />
               ))}
             </AnimatePresence>
+            {visibleOpen.length === 0 ? (
+              <p className="jwf-done-empty">
+                {needle ? 'Nothing matches' : 'Add a task below'}
+              </p>
+            ) : null}
           </Reorder.Group>
 
           <div className="jwf-task-input-row">
             <input
-              // Keeps the "always ready for the next line" contract the moment the
-              // Tasks lane becomes the visible tab.
               autoFocus
               className="jwf-task-input"
               type="text"
               aria-label="Add a task"
-              // The runtime rejects text beyond its bound anyway; clamping here
-              // turns that rejection into a normal truncation instead of a toast.
               maxLength={MAX_TASK_TEXT_CHARS}
               placeholder="Add a task…"
               value={draft}
@@ -216,8 +292,12 @@ export function TasksTab({
                   event.preventDefault()
                   submit()
                 } else if (event.key === 'Backspace' && draft.length === 0) {
-                  const last = openView.at(-1)
-                  if (last) send({ type: 'remove', id: last.id })
+                  const last = visibleOpen.at(-1)
+                  if (last) {
+                    voice().taskDelete()
+                    send({ type: 'remove', id: last.id })
+                    flashUndo('Deleted')
+                  }
                 }
               }}
             />
@@ -238,22 +318,35 @@ export function TasksTab({
                 {filter.label}
               </button>
             ))}
+            <button
+              type="button"
+              className="jwf-ghost-clear"
+              onClick={clearCompleted}
+              disabled={doneTop.length === 0}
+              title="Remove every completed task (undoable)"
+            >
+              Clear completed
+            </button>
           </div>
 
           <div className="jwf-task-list" role="list">
             <AnimatePresence initial={false}>
-              {filtered.map(task => (
+              {filteredDone.map(task => (
                 <TaskRow
                   key={task.id}
                   task={task}
+                  dueEditing={dueEditingId === task.id}
+                  onDueEditingDone={() => setDueEditingId(null)}
                   onToggle={toggle}
+                  onEdit={(edited, text) => send({ type: 'edit', id: edited.id, text })}
+                  onSetDue={(edited, dueAt) => send({ type: 'setDue', id: edited.id, dueAt })}
                   onMenu={openMenu}
                 />
               ))}
             </AnimatePresence>
-            {filtered.length === 0 ? (
+            {filteredDone.length === 0 ? (
               <p className="jwf-done-empty">
-                {done.length === 0 ? 'Nothing completed yet' : 'Nothing in this range'}
+                {doneTop.length === 0 ? 'Nothing completed yet' : 'Nothing in this range'}
               </p>
             ) : null}
           </div>
@@ -261,88 +354,121 @@ export function TasksTab({
       )}
 
       {menu ? (
-        <ContextMenu target={menu} onDelete={deleteFromMenu} onClose={() => setMenu(null)} />
+        <ContextMenu
+          target={menu}
+          onSetDue={({ id }) => setDueEditingId(id)}
+          onAddSubtask={({ id }) => setSubInputParentId(id)}
+          onDelete={deleteFromMenu}
+          onClose={() => setMenu(null)}
+        />
+      ) : null}
+
+      {undoToast ? (
+        <div className="jwf-undo" role="status">
+          <span>{undoToast}</span>
+          <button type="button" onClick={undo}>Undo</button>
+        </div>
       ) : null}
     </div>
   )
 }
 
-/**
- * One line, three deliberate gestures: click toggles, right-click opens the
- * menu, drag reorders (To do only — the Done list owns its doneAt-descending
- * order). The row is a button so the whole line stays the click target.
- */
-function TaskRow({
+/** One top-level task with its subtask block, kept contiguous exactly the way
+ *  the engine's storage invariant expects. */
+function TaskBlock({
   task,
+  subs,
+  subInputOpen,
+  onSubInputClose,
+  dueEditingId,
+  onDueEditingDone,
   onToggle,
+  onEdit,
+  onSetDue,
   onMenu,
-  drag = false,
+  onAddSub,
   onDragState,
   onDragSettled,
+  drag,
 }: {
   task: Task
+  subs: Task[]
+  subInputOpen: boolean
+  onSubInputClose: () => void
+  dueEditingId: string | null
+  onDueEditingDone: () => void
   onToggle: (task: Task) => void
+  onEdit: (task: Task, text: string) => void
+  onSetDue: (task: Task, dueAt: number | null) => void
   onMenu: (event: ReactMouseEvent, task: Task) => void
-  drag?: boolean
-  onDragState?: (active: boolean) => void
-  onDragSettled?: () => void
+  onAddSub: (text: string, parentId: string) => void
+  onDragState: (active: boolean) => void
+  onDragSettled: () => void
+  drag: boolean
 }) {
-  const hint = task.done
-    ? 'Click to reopen · right-click for options'
-    : 'Click to complete · drag to reorder · right-click for options'
+  const [subDraft, setSubDraft] = useState('')
 
-  const body = (
+  // Reorder.Group requires direct children to be the draggable items, so the
+  // whole block renders as ONE fragment wrapper: the parent is the Reorder
+  // item, and the subs ride along inside its subtree (they move with it by
+  // construction — the engine's invariant guarantees their array position).
+  return (
     <>
-      <span className="jwf-task-text">{task.text}</span>
-      {task.done && task.doneAt != null ? (
-        <span className="jwf-task-date">{formatDoneAt(task.doneAt)}</span>
+      <TaskRow
+        task={task}
+        subProgress={subs.length > 0
+          ? { done: subs.filter(sub => sub.done).length, total: subs.length }
+          : undefined}
+        dueEditing={dueEditingId === task.id}
+        onDueEditingDone={onDueEditingDone}
+        onToggle={onToggle}
+        onEdit={onEdit}
+        onSetDue={onSetDue}
+        onMenu={onMenu}
+        drag={drag}
+        onDragState={onDragState}
+        onDragSettled={onDragSettled}
+      />
+      {subs.map(sub => (
+        <TaskRow
+          key={sub.id}
+          task={sub}
+          dueEditing={dueEditingId === sub.id}
+          onDueEditingDone={onDueEditingDone}
+          onToggle={onToggle}
+          onEdit={onEdit}
+          onSetDue={onSetDue}
+          onMenu={onMenu}
+        />
+      ))}
+      {subInputOpen ? (
+        <div className="jwf-sub-input-row">
+          <input
+            autoFocus
+            className="jwf-task-input jwf-sub-input"
+            type="text"
+            aria-label="Add a subtask"
+            maxLength={MAX_TASK_TEXT_CHARS}
+            placeholder="Add a subtask…"
+            value={subDraft}
+            onChange={event => setSubDraft(event.target.value)}
+            onKeyDown={event => {
+              event.stopPropagation()
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                const trimmed = subDraft.trim()
+                if (trimmed.length > 0) {
+                  onAddSub(trimmed, task.id)
+                  setSubDraft('')
+                }
+              } else if (event.key === 'Escape') {
+                onSubInputClose()
+              }
+            }}
+            onBlur={onSubInputClose}
+          />
+        </div>
       ) : null}
     </>
-  )
-
-  const shared = {
-    className: 'jwf-task',
-    'data-done': task.done,
-    title: hint,
-    onClick: () => onToggle(task),
-    // Right-click OPENS the menu; deletion happens from its Delete item, so
-    // the destructive act always has its own deliberate click.
-    onContextMenu: (event: ReactMouseEvent) => onMenu(event, task),
-  }
-
-  if (drag) {
-    return (
-      <Reorder.Item
-        as="button"
-        type="button"
-        value={task}
-        {...shared}
-        // onDragEnd fires after the final onReorder, so the parent's mirrored
-        // ref already holds the settled order when this calls settleDrag.
-        onDragStart={() => onDragState?.(true)}
-        onDragEnd={() => onDragSettled?.()}
-        initial={{ opacity: 0, x: -6 }}
-        animate={{ opacity: 1, x: 0 }}
-        exit={{ opacity: 0, x: 6 }}
-        transition={{ duration: 0.16 }}
-        style={{ position: 'relative' }}
-      >
-        {body}
-      </Reorder.Item>
-    )
-  }
-
-  return (
-    <motion.button
-      type="button"
-      role="listitem"
-      {...shared}
-      initial={{ opacity: 0, x: -6 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: 6 }}
-      transition={{ duration: 0.16 }}
-    >
-      {body}
-    </motion.button>
   )
 }
