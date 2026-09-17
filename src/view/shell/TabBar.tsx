@@ -16,10 +16,12 @@ export function TabBar({
   onSelect: (tab: TabId) => void
 }) {
   return (
-    <nav className="jwf-tabs">
+    <nav className="jwf-tabs" role="tablist" aria-label="Workspace lanes">
       <button
         type="button"
         className="jwf-tab"
+        role="tab"
+        aria-selected={activeTab === 'timer'}
         data-active={activeTab === 'timer'}
         onClick={() => onSelect('timer')}
       >
@@ -29,6 +31,8 @@ export function TabBar({
       <button
         type="button"
         className="jwf-tab"
+        role="tab"
+        aria-selected={activeTab === 'tasks'}
         data-active={activeTab === 'tasks'}
         onClick={() => onSelect('tasks')}
       >

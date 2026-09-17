@@ -3,6 +3,7 @@ import { useState } from 'react'
 
 import type { JsonValue } from 'agent-code-extension-api'
 import type { TasksState } from '../../engines/tasks/types'
+import { MAX_TASK_TEXT_CHARS } from '../../engines/tasks/types'
 
 /**
  * The task list. The entire interaction model:
@@ -63,6 +64,10 @@ export function TasksTab({
           autoFocus
           className="jwf-task-input"
           type="text"
+          aria-label="Add a task"
+          // The runtime rejects text beyond its bound anyway; clamping here
+          // turns that rejection into a normal truncation instead of a toast.
+          maxLength={MAX_TASK_TEXT_CHARS}
           placeholder="Add a task…"
           value={draft}
           onChange={event => setDraft(event.target.value)}
