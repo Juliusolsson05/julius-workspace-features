@@ -5,6 +5,13 @@
   "version": "0.1.0",
   "apiVersion": 2,
   "entry": "dist/runtime.js",
+  "keywords": [
+    "workspace",
+    "timer",
+    "focus",
+    "tasks",
+    "todo"
+  ],
   "activationEvents": [
     "onStartupFinished"
   ],
