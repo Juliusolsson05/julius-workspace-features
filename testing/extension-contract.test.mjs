@@ -10,9 +10,17 @@ test('the committed API v2 bundle has independent runtime and panel entries', as
   assert.equal(manifest.entry, 'dist/runtime.js')
   assert.deepEqual(manifest.permissions, ['sessions.observe', 'notifications.show'])
   assert.deepEqual(manifest.activationEvents, ['onStartupFinished'])
-  assert.deepEqual(manifest.contributes.views, [{
-    id: 'julius-workspace-features.main', title: 'Workspace', mount: 'panel', entry: 'dist/view.js',
-  }])
+  // Two surfaces over one entry: the lane pane and the modal. Their ids also
+  // exist as commands so the palette opens each through the host's own
+  // view-id routing (a command whose id equals a view id opens that view).
+  assert.deepEqual(manifest.contributes.views, [
+    { id: 'julius-workspace-features.main', title: 'Workspace', mount: 'panel', entry: 'dist/view.js' },
+    { id: 'julius-workspace-features.modal', title: 'Workspace', mount: 'modal', entry: 'dist/view.js' },
+  ])
+  const commandIds = manifest.contributes.commands.map(command => command.id)
+  for (const view of manifest.contributes.views) {
+    assert.ok(commandIds.includes(view.id), `missing open command for ${view.id}`)
+  }
 
   // Every contribution must live inside the extension's own namespace — the
   // host rejects a manifest whose ids escape it, so the committed bundle must

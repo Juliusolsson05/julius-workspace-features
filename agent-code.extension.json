@@ -2,7 +2,7 @@
   "id": "julius-workspace-features",
   "name": "Workspace Features",
   "description": "One lane with tabs: the focus timer (ported from agent-code-timer) and a minimal task list. Keeps running when the panel is closed.",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "apiVersion": 2,
   "entry": "dist/runtime.js",
   "keywords": [
@@ -18,15 +18,30 @@
   "contributes": {
     "commands": [
       {
-        "id": "julius-workspace-features.open",
-        "title": "Open Workspace Features",
+        "id": "julius-workspace-features.main",
+        "title": "Open Workspace (Lane)",
         "keywords": [
           "timer",
           "focus",
           "pomodoro",
           "countdown",
           "tasks",
-          "todo"
+          "todo",
+          "lane",
+          "pane"
+        ]
+      },
+      {
+        "id": "julius-workspace-features.modal",
+        "title": "Open Workspace (Modal)",
+        "keywords": [
+          "timer",
+          "focus",
+          "tasks",
+          "todo",
+          "modal",
+          "dialog",
+          "floating"
         ]
       },
       {
@@ -47,6 +62,12 @@
         "id": "julius-workspace-features.main",
         "title": "Workspace",
         "mount": "panel",
+        "entry": "dist/view.js"
+      },
+      {
+        "id": "julius-workspace-features.modal",
+        "title": "Workspace",
+        "mount": "modal",
         "entry": "dist/view.js"
       }
     ],
