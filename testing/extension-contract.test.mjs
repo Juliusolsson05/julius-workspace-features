@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
+import { readdir, readFile } from 'node:fs/promises'
 import { pathToFileURL } from 'node:url'
 import { test } from 'node:test'
 
@@ -32,11 +32,16 @@ test('the committed API v2 bundle has independent runtime and panel entries', as
   assert.equal(typeof view.default.mount, 'function')
   assert.equal(view.default.activate, undefined)
 
-  const runtimeSource = await readFile(manifest.entry, 'utf8')
-  const viewSource = await readFile(manifest.contributes.views[0].entry, 'utf8')
   // Audio belongs to visible view feedback. Keeping it out of the hidden engine
   // prevents an autoplay-dependent browser primitive from becoming completion's
-  // only signal; the permissioned host notification is the durable path.
-  assert.doesNotMatch(runtimeSource, /AudioContext/)
-  assert.match(viewSource, /AudioContext/)
+  // only signal; the permissioned host notification is the durable path. Scan
+  // EVERY emitted chunk, not just the manifest entries — a future build that
+  // moves the chime into a shared chunk would otherwise slip past a single-file
+  // check while still running inside the hidden runtime.
+  const viewEntry = manifest.contributes.views[0].entry
+  for (const file of (await readdir('dist')).filter(name => name.endsWith('.js'))) {
+    const source = await readFile(`dist/${file}`, 'utf8')
+    if (`dist/${file}` === viewEntry) assert.match(source, /AudioContext/)
+    else assert.doesNotMatch(source, /AudioContext/)
+  }
 })
