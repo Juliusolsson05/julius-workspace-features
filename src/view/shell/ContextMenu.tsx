@@ -1,16 +1,13 @@
 import { useEffect, useRef } from 'react'
 
-import type { JsonValue } from 'agent-code-extension-api'
-
 /**
  * The lane's context menu. The sandboxed iframe cannot reach Electron's native
  * menus, so this is a small positioned card plus a transparent backdrop that
- * closes on any outside interaction — the menu is deliberately spare (one
- * action) because its job is to make destructive gestures deliberate, not to
- * be a toolbar.
+ * closes on any outside interaction. Three actions, one per row-level need:
+ * due date, subtask, delete.
  *
- * Coordinates are relative to the `.jwf` root (position: relative), computed
- * by the caller from the context-menu event, so the card lands exactly under
+ * Coordinates are relative to the lane root (position: relative), computed by
+ * the caller from the context-menu event, so the card lands exactly under
  * the cursor regardless of pane scroll.
  */
 export type ContextMenuTarget = {
@@ -24,19 +21,23 @@ export type ContextMenuTarget = {
 
 export function ContextMenu({
   target,
+  onSetDue,
+  onAddSubtask,
   onDelete,
   onClose,
 }: {
   target: ContextMenuTarget
-  onDelete: (action: JsonValue) => void
+  onSetDue: (task: { id: string }) => void
+  onAddSubtask: (task: { id: string }) => void
+  onDelete: (task: { id: string }) => void
   onClose: () => void
 }) {
-  const deleteButton = useRef<HTMLButtonElement | null>(null)
+  const firstButton = useRef<HTMLButtonElement | null>(null)
 
   useEffect(() => {
-    // Focus the action itself: Enter deletes, Escape closes, and the menu is
-    // immediately keyboard-operable without a tab stop hunt.
-    deleteButton.current?.focus()
+    // Focus the first action: Enter activates it, Escape closes, and the menu
+    // is immediately keyboard-operable without a tab stop hunt.
+    firstButton.current?.focus()
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.stopPropagation()
@@ -47,8 +48,8 @@ export function ContextMenu({
     return () => window.removeEventListener('keydown', onKey, true)
   }, [onClose])
 
-  const deleteTask = () => {
-    onDelete({ type: 'remove', id: target.taskId })
+  const run = (action: () => void) => () => {
+    action()
     onClose()
   }
 
@@ -72,11 +73,28 @@ export function ContextMenu({
         style={{ left: target.x, top: target.y }}
       >
         <button
-          ref={deleteButton}
+          ref={firstButton}
           type="button"
           className="jwf-menu-item"
           role="menuitem"
-          onClick={deleteTask}
+          onClick={run(() => onSetDue({ id: target.taskId }))}
+        >
+          Set due date
+        </button>
+        <button
+          type="button"
+          className="jwf-menu-item"
+          role="menuitem"
+          onClick={run(() => onAddSubtask({ id: target.taskId }))}
+        >
+          Add subtask
+        </button>
+        <button
+          type="button"
+          className="jwf-menu-item"
+          role="menuitem"
+          data-danger
+          onClick={run(() => onDelete({ id: target.taskId }))}
         >
           Delete
         </button>

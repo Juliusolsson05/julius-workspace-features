@@ -30,6 +30,12 @@ export function WorkspaceView({ context }: { context: ViewContext<WorkspaceState
   const [state, setState] = useState(() => context.runtime.state() ?? EMPTY_WORKSPACE)
   useEffect(() => context.runtime.subscribe(setState), [context])
 
+  // The same UI serves two surfaces: the fill-edge-to-edge lane pane and a
+  // floating modal. The host sizes each differently (a pane fills its tile; a
+  // modal hugs content), and the view id is the only signal available inside
+  // the frame — so the id drives a class that switches the shell's sizing.
+  const isModal = context.view.id.endsWith('.modal')
+
   // One error surface for every lane: request failures surface as host toasts,
   // exactly like the ported timer view's own catch did.
   const request = useCallback((name: string, action: JsonValue) => {
@@ -57,7 +63,7 @@ export function WorkspaceView({ context }: { context: ViewContext<WorkspaceState
   }, [state.timer.inheritTheme])
 
   return (
-    <div className="jwf" ref={rootRef}>
+    <div className={isModal ? 'jwf jwf-modal' : 'jwf'} ref={rootRef}>
       <TabBar
         activeTab={state.activeTab}
         timerRunning={state.timer.phase === 'running'}
