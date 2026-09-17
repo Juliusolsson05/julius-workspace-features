@@ -168,12 +168,15 @@ test('tasks persist, publish through the combined state, and survive reactivatio
     fixture.publications.at(-1).state.tasks.tasks.map(task => task.done),
     [true, true],
   )
+  // Completing stamps the wall clock; the persisted v2 shape carries it.
+  const completedAt = fixture.publications.at(-1).state.tasks.tasks.find(task => task.id === added.id).doneAt
+  assert.equal(typeof completedAt, 'number')
   await action({ type: 'remove', id: 'one' }, view())
   assert.deepEqual(
     fixture.publications.at(-1).state.tasks.tasks.map(task => task.text),
     ['write'],
   )
-  assert.deepEqual(fixture.storage.get('tasks').tasks, [{ id: added.id, text: 'write', done: true }])
+  assert.deepEqual(fixture.storage.get('tasks').tasks, [{ id: added.id, text: 'write', done: true, doneAt: completedAt }])
 
   // Real reactivation, not just a seeded store: tear the runtime down, bring
   // it back over the same persisted bytes, and require the tasks to return.

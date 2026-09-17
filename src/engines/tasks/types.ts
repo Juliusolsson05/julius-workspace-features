@@ -2,6 +2,9 @@ export type Task = {
   id: string
   text: string
   done: boolean
+  /** Epoch ms when the task was completed; null while it is open. The stamp is
+   *  what the Done subtab's date filters group on. */
+  doneAt: number | null
 }
 
 /**
@@ -12,11 +15,18 @@ export type TasksState = {
   tasks: Task[]
 }
 
-/** The persisted shape. Versioned so a future migration can tell shapes apart. */
-export type PersistedTasks = {
+/** v1 had no completion timestamps — `done` was a bare boolean. */
+export type PersistedTasksV1 = {
   version: 1
+  tasks: Array<{ id: string; text: string; done: boolean }>
+}
+
+export type PersistedTasksV2 = {
+  version: 2
   tasks: Task[]
 }
+
+export type PersistedTasks = PersistedTasksV1 | PersistedTasksV2
 
 // Bounds shared by the engine and the runtime's action validation. 256 tasks of
 // 200 chars is ~52 KiB of JSON — comfortably inside the host's 128 Ki-character
