@@ -252,10 +252,12 @@ export default defineRuntime({
     })
     context.registerRequest('selectTab', async input => {
       activeTab = tabFrom(input)
-      // Persist BEFORE publishing, mirroring setInheritTheme: a failed write must
-      // not leave the UI showing a tab choice the next activation loses.
-      void context.api.storage.set(ACTIVE_TAB_KEY, activeTab).catch(() => {})
-      void publish().catch(() => {})
+      // Persist BEFORE publishing and await it, mirroring setInheritTheme: a
+      // failed write must not leave the UI showing a tab choice the next
+      // activation loses. A rejection here surfaces to the view as a failed
+      // request instead of a silently unsaved preference.
+      await context.api.storage.set(ACTIVE_TAB_KEY, activeTab)
+      await publish()
       return activeTab
     })
     await publish()
