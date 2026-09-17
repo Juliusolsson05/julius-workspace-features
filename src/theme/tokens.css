@@ -454,11 +454,50 @@
  */
 
 .jwf-tasks {
+  /* relative anchors the context menu card (see ContextMenu.tsx). */
+  position: relative;
   flex: 1;
   display: flex;
   flex-direction: column;
   padding: 12px 22px 16px;
   min-height: 0; /* lets the list scroll instead of growing the pane */
+}
+
+/* --------------------------------------------------------------- menu */
+
+/* Transparent click-away above everything in the lane but the menu card. */
+.jwf-menu-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+}
+
+.jwf-menu {
+  position: absolute;
+  z-index: 6;
+  min-width: 148px;
+  padding: 4px;
+  border-radius: 10px;
+  background: var(--tm-surface);
+  border: 1px solid var(--tm-border);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.jwf-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  border-radius: 7px;
+  font-size: 13px;
+  color: var(--tm-fg);
+  transition: background 0.12s ease;
+}
+
+.jwf-menu-item:hover,
+.jwf-menu-item:focus-visible {
+  background: var(--tm-border);
+  outline: none;
 }
 
 .jwf-subtabs {
