@@ -639,6 +639,9 @@
  */
 .jwf-check {
   flex: none;
+  /* relative + absolute ::after below: the tick is centered by percentages of
+     its own box, so the SAME geometry fits the 15px and 12px checkboxes. */
+  position: relative;
   width: 15px;
   height: 15px;
   align-self: center;
@@ -656,14 +659,25 @@
   border-color: var(--tm-accent);
 }
 
+/*
+ * The check glyph. The previous version hand-tuned a rotate+translate pair to
+ * nudge a top-left-anchored box into place — numbers that only approximated
+ * the 15px checkbox, overflowed the 12px subtask one, and used 1.5px borders
+ * that blur on fractional device pixels. Centering absolutely (percentages of
+ * the glyph's own size, translate-then-rotate) removes every magic number.
+ */
 .jwf-check[data-done='true']::after {
   content: '';
-  display: block;
-  width: 3px;
-  height: 7px;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 30%;
+  height: 55%;
   border: solid var(--tm-accent-fg);
-  border-width: 0 1.5px 1.5px 0;
-  transform: rotate(40deg) translate(4px, 1px);
+  border-width: 0 2px 2px 0;
+  /* -60% rather than -50%: a rotated check's visual mass sits low, so a hair
+     of upward bias optically centers it inside the filled box. */
+  transform: translate(-50%, -60%) rotate(40deg);
 }
 
 .jwf-check[data-sub='true'] {
@@ -804,15 +818,21 @@
 
 /* -------------------------------------------------------------- modal */
 
-/* The same shell as a floating dialog: hug content instead of filling a tile,
-   keep a sane working width, and let the lists scroll instead of the modal
-   growing without bound. */
+/*
+ * The same shell as a floating dialog. The modal host sizes its iframe from
+ * the CONTENT's natural size, so percentage/viewport units (vw/vh) here are
+ * circular — the frame measures itself — and the sizing loop collapses or
+ * explodes the dialog. Everything is therefore fixed pixels: a set width, an
+ * auto height, and bounded scroll areas.
+ */
 .jwf-modal {
   height: auto;
   min-height: 0;
-  width: min(440px, 92vw);
+  /* No viewport math, and no -1px pull over the dialog's own chrome. */
+  margin: 0;
+  width: 440px;
 }
 
 .jwf-modal .jwf-tasks {
-  max-height: 62vh;
+  max-height: 480px;
 }
