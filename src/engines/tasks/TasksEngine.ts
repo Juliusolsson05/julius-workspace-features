@@ -59,18 +59,24 @@ export class TasksEngine {
 
       let parentId: string | null = null
       if (data.version === 3) {
+        // The version guard discriminated the union at runtime; the cast only
+        // re-narrows the loop variable's element type.
+        const row = task as Task
         // The contiguity invariant is verified on the way in: a subtask must
         // belong to the most recent top-level task above it. A hand-reordered
         // or hand-edited file that violates it is rejected wholesale —
         // accepting it would strand the view's grouping forever after.
-        if (task.parentId !== null && task.parentId !== undefined) {
-          if (typeof task.parentId !== 'string' || task.parentId !== lastTopId) return
-          parentId = task.parentId
+        if (row.parentId !== null && row.parentId !== undefined) {
+          if (typeof row.parentId !== 'string' || row.parentId !== lastTopId) return
+          parentId = row.parentId
         }
-        if (task.dueAt !== null && task.dueAt !== undefined && !isValidDueAt(task.dueAt)) return
+        if (row.dueAt !== null && row.dueAt !== undefined && !isValidDueAt(row.dueAt)) return
       }
 
-      let doneAt: number | null = task.doneAt ?? null
+      // v1 rows have no doneAt field at all in the union type; the widened
+      // read keeps the version branches working over all three shapes.
+      const stamp = (task as Partial<Task>).doneAt
+      let doneAt: number | null = null
       if (data.version === 1) {
         // v1 predates timestamps: a done task migrates with doneAt = now (the
         // falsified-but-useful date beats hiding it from every filter).
@@ -79,10 +85,8 @@ export class TasksEngine {
         // v2/v3: a done task MUST carry its completion wall-clock; anything
         // else is a corrupt row. (doneAt is NOT bounded like dueAt — it is a
         // point-in-time stamp, not a calendar day.)
-        if (typeof task.doneAt !== 'number' || !Number.isFinite(task.doneAt)) return
-        doneAt = task.doneAt
-      } else {
-        doneAt = null
+        if (typeof stamp !== 'number' || !Number.isFinite(stamp)) return
+        doneAt = stamp
       }
 
       restored.push({
@@ -91,7 +95,9 @@ export class TasksEngine {
         done: task.done,
         doneAt,
         parentId,
-        dueAt: data.version === 3 ? (task.dueAt ?? null) : null,
+        // v3's dueAt was validated in the version branch above (row); every
+        // earlier version predates the field and migrates as null.
+        dueAt: data.version === 3 ? ((task as Task).dueAt ?? null) : null,
       })
       if (parentId === null) lastTopId = task.id
     }

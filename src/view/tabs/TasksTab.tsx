@@ -1,4 +1,4 @@
-import { AnimatePresence, motion, Reorder } from 'framer-motion'
+import { AnimatePresence, Reorder } from 'framer-motion'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent } from 'react'
 
@@ -7,7 +7,7 @@ import type { Task, TasksState } from '../../engines/tasks/types'
 import { MAX_TASK_TEXT_CHARS } from '../../engines/tasks/types'
 import { ContextMenu, type ContextMenuTarget } from '../shell/ContextMenu'
 import { Sfx } from '../sounds'
-import { TaskRow } from './TaskRow'
+import { TaskRow } from '../tasks/TaskRow'
 
 type SubTab = 'todo' | 'done'
 type DoneFilter = 'today' | 'week' | 'all'

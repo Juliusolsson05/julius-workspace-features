@@ -33,7 +33,7 @@ export function TaskRow({
   task,
   subProgress,
   dueEditing,
-  onDueDismiss,
+  onDueEditingDone,
   onToggle,
   onEdit,
   onSetDue,
@@ -47,7 +47,7 @@ export function TaskRow({
   subProgress?: { done: number; total: number }
   /** The lane asks this row to enter date-editing (menu → Set due date). */
   dueEditing?: boolean
-  onDueDismiss?: () => void
+  onDueEditingDone?: () => void
   onToggle: (task: Task) => void
   onEdit: (task: Task, text: string) => void
   onSetDue: (task: Task, dueAt: number | null) => void
@@ -156,12 +156,12 @@ export function TaskRow({
             if (event.key === 'Enter') {
               event.preventDefault()
               onSetDue(task, dueDraft ? new Date(`${dueDraft}T00:00:00`).getTime() : null)
-              onDueDismiss?.()
+              onDueEditingDone?.()
             } else if (event.key === 'Escape') {
-              onDueDismiss?.()
+              onDueEditingDone?.()
             }
           }}
-          onBlur={() => onDueDismiss?.()}
+          onBlur={() => onDueEditingDone?.()}
         />
         <button
           type="button"
@@ -169,7 +169,7 @@ export function TaskRow({
           title="Clear due date"
           onClick={() => {
             onSetDue(task, null)
-            onDueDismiss?.()
+            onDueEditingDone?.()
           }}
         >
           Clear
