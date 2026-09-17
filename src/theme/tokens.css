@@ -502,6 +502,7 @@
 
 .jwf-subtabs {
   display: flex;
+  align-items: center;
   gap: 16px;
   padding-bottom: 8px;
   border-bottom: 1px solid var(--tm-border);
@@ -528,6 +529,7 @@
 
 .jwf-filters {
   display: flex;
+  align-items: center;
   gap: 6px;
   padding: 10px 0 6px;
   flex: none;
@@ -626,4 +628,191 @@
 
 .jwf-task-input::placeholder {
   color: var(--tm-faint);
+}
+
+/* ------------------------------------------------- v5: the full todo surface */
+
+/*
+ * The checkbox is back as the explicit completion control — safe to style now
+ * that the element resets live in :where() (zero specificity), which is
+ * precisely what destroyed them in v0.1.
+ */
+.jwf-check {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  align-self: center;
+  border-radius: 4px;
+  border: 1px solid var(--tm-faint);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.jwf-check:hover {
+  border-color: var(--tm-dim);
+}
+
+.jwf-check[data-done='true'] {
+  background: var(--tm-accent);
+  border-color: var(--tm-accent);
+}
+
+.jwf-check[data-done='true']::after {
+  content: '';
+  display: block;
+  width: 3px;
+  height: 7px;
+  border: solid var(--tm-accent-fg);
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(40deg) translate(4px, 1px);
+}
+
+.jwf-check[data-sub='true'] {
+  width: 12px;
+  height: 12px;
+}
+
+.jwf-subtab {
+  white-space: nowrap;
+}
+
+.jwf-search {
+  margin-left: auto;
+  width: 120px;
+  border: none;
+  border-bottom: 1px solid var(--tm-border);
+  background: transparent;
+  color: var(--tm-fg);
+  padding: 3px 2px;
+  font-size: 12px;
+}
+
+.jwf-search::placeholder {
+  color: var(--tm-faint);
+}
+
+.jwf-search:focus {
+  border-bottom-color: var(--tm-dim);
+}
+
+.jwf-ghost-clear {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--tm-faint);
+  transition: color 0.18s ease;
+}
+
+.jwf-ghost-clear:hover:not(:disabled) {
+  color: var(--tm-fg);
+}
+
+.jwf-ghost-clear:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* Subtask rows indent and shrink beneath their parent. */
+.jwf-task[data-sub='true'] {
+  padding-left: 32px;
+  font-size: 13px;
+}
+
+.jwf-task-text {
+  cursor: default;
+}
+
+.jwf-task-progress {
+  margin-left: 8px;
+  font-size: 11px;
+  font-family: var(--tm-font-digit);
+  color: var(--tm-faint);
+}
+
+.jwf-task-date[data-overdue='true'] {
+  color: var(--tm-fg);
+  font-weight: 600;
+}
+
+/* Inline editors: the row's text becomes an input, bordered only at the
+   bottom so the line keeps its shape while editing. */
+.jwf-edit-input,
+.jwf-due-input {
+  flex: 1;
+  border: none;
+  border-bottom: 1px solid var(--tm-dim);
+  background: transparent;
+  color: var(--tm-fg);
+  padding: 0 0 2px;
+  font-size: 14px;
+}
+
+.jwf-due-input {
+  /* Native date pickers paint their calendar icon from the UA color scheme;
+     dark keeps it visible on the black lane. */
+  color-scheme: dark;
+  font-family: var(--tm-font-digit);
+  font-size: 13px;
+}
+
+.jwf-sub-input-row {
+  padding: 2px 0 4px 26px;
+}
+
+.jwf-sub-input {
+  border-top: none;
+  border-bottom: 1px solid var(--tm-border);
+  padding: 4px 2px;
+  font-size: 13px;
+}
+
+/* The undo toast: bottom-centered, quiet, one action. */
+.jwf-undo {
+  position: absolute;
+  left: 50%;
+  bottom: 54px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 8px 7px 14px;
+  border-radius: 999px;
+  background: var(--tm-surface);
+  border: 1px solid var(--tm-border);
+  font-size: 12px;
+  color: var(--tm-dim);
+  z-index: 4;
+}
+
+.jwf-undo button {
+  font-size: 12px;
+  color: var(--tm-fg);
+  padding: 3px 10px;
+  border-radius: 999px;
+  transition: background 0.15s ease;
+}
+
+.jwf-undo button:hover {
+  background: var(--tm-border);
+}
+
+.jwf-menu-item[data-danger] {
+  color: var(--tm-dim);
+}
+
+.jwf-menu-item[data-danger]:hover {
+  color: var(--tm-fg);
+}
+
+/* -------------------------------------------------------------- modal */
+
+/* The same shell as a floating dialog: hug content instead of filling a tile,
+   keep a sane working width, and let the lists scroll instead of the modal
+   growing without bound. */
+.jwf-modal {
+  height: auto;
+  min-height: 0;
+  width: min(440px, 92vw);
+}
+
+.jwf-modal .jwf-tasks {
+  max-height: 62vh;
 }
