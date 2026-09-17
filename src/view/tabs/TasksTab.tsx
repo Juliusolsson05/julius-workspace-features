@@ -1,9 +1,12 @@
 import { AnimatePresence, motion, Reorder } from 'framer-motion'
 import { useEffect, useRef, useState } from 'react'
+import type { MouseEvent as ReactMouseEvent } from 'react'
 
 import type { JsonValue } from 'agent-code-extension-api'
 import type { Task, TasksState } from '../../engines/tasks/types'
 import { MAX_TASK_TEXT_CHARS } from '../../engines/tasks/types'
+import { ContextMenu, type ContextMenuTarget } from '../shell/ContextMenu'
+import { Sfx } from '../sounds'
 
 type SubTab = 'todo' | 'done'
 type DoneFilter = 'today' | 'week' | 'all'
@@ -34,14 +37,14 @@ function formatDoneAt(doneAt: number): string {
  * The Tasks lane. Two subtabs over one published array:
  *
  *   To do — the input and the open lines. Click a line to complete it; drag a
- *           line to reorder; right-click to delete. Backspace on the empty
- *           input removes the last open task.
+ *           line to reorder; right-click for the context menu (Delete).
+ *           Backspace on the empty input removes the last open task.
  *   Done  — completed lines, struck through, with a completion stamp and date
- *           filters. Click a line to reopen it; right-click to delete.
+ *           filters. Click a line to reopen it; right-click for Delete.
  *
  * There is no checkbox anywhere: the line itself is the toggle, one affordance
- * instead of two, and no per-row delete button — right-click is the delete
- * gesture in both lists, which keeps every row a single clean line of text.
+ * instead of two. Deletion is menu-only and therefore deliberate — the row's
+ * click gesture stays non-destructive at full row size.
  */
 export function TasksTab({
   state,
@@ -53,6 +56,11 @@ export function TasksTab({
   const [subTab, setSubTab] = useState<SubTab>('todo')
   const [doneFilter, setDoneFilter] = useState<DoneFilter>('all')
   const [draft, setDraft] = useState('')
+  const [menu, setMenu] = useState<ContextMenuTarget | null>(null)
+
+  // One shared voice for the lane, created lazily on first gesture so the
+  // AudioContext is born inside a user activation (autoplay policy).
+  const sfx = useRef<Sfx | null>(null)
 
   const open = state.tasks.filter(task => !task.done)
   // Newest completion first: the freshest items sit where the eye lands, and
@@ -98,15 +106,47 @@ export function TasksTab({
     send({ type: 'reorder', ids: [...next.map(task => task.id), ...done.map(task => task.id)] })
   }
 
+  const toggle = (task: Task) => {
+    sfx.current ??= new Sfx()
+    // Sound on the click, not on the published round-trip: feedback must be
+    // immediate to feel physical.
+    if (task.done) sfx.current.taskReopen()
+    else sfx.current.taskComplete()
+    send({ type: 'toggle', id: task.id })
+  }
+
   const submit = () => {
     const trimmed = draft.trim()
     if (trimmed.length === 0) return
+    sfx.current ??= new Sfx()
+    sfx.current.taskAdd()
     send({ type: 'add', text: trimmed })
     setDraft('')
   }
 
+  const deleteFromMenu = (action: JsonValue) => {
+    sfx.current ??= new Sfx()
+    sfx.current.taskDelete()
+    send(action)
+  }
+
+  // Menu coordinates are relative to this lane root (position: relative) so
+  // the card lands under the cursor regardless of pane scroll.
+  const laneRef = useRef<HTMLDivElement | null>(null)
+  const openMenu = (event: ReactMouseEvent, task: Task) => {
+    event.preventDefault()
+    event.stopPropagation()
+    const rect = laneRef.current?.getBoundingClientRect()
+    setMenu({
+      taskId: task.id,
+      label: task.text,
+      x: event.clientX - (rect?.left ?? 0),
+      y: event.clientY - (rect?.top ?? 0),
+    })
+  }
+
   return (
-    <div className="jwf-tasks">
+    <div className="jwf-tasks" ref={laneRef}>
       <div className="jwf-subtabs" role="tablist" aria-label="Task lists">
         <button
           type="button"
@@ -144,7 +184,8 @@ export function TasksTab({
                 <TaskRow
                   key={task.id}
                   task={task}
-                  send={send}
+                  onToggle={toggle}
+                  onMenu={openMenu}
                   drag
                   onDragState={active => { dragging.current = active }}
                   onDragSettled={settleDrag}
@@ -202,7 +243,12 @@ export function TasksTab({
           <div className="jwf-task-list" role="list">
             <AnimatePresence initial={false}>
               {filtered.map(task => (
-                <TaskRow key={task.id} task={task} send={send} />
+                <TaskRow
+                  key={task.id}
+                  task={task}
+                  onToggle={toggle}
+                  onMenu={openMenu}
+                />
               ))}
             </AnimatePresence>
             {filtered.length === 0 ? (
@@ -213,29 +259,37 @@ export function TasksTab({
           </div>
         </>
       )}
+
+      {menu ? (
+        <ContextMenu target={menu} onDelete={deleteFromMenu} onClose={() => setMenu(null)} />
+      ) : null}
     </div>
   )
 }
 
 /**
- * One line, two gestures: click toggles, right-click deletes, drag reorders
- * (To do only — the Done list owns its doneAt-descending order). The row is a
- * button so the whole line stays the click target.
+ * One line, three deliberate gestures: click toggles, right-click opens the
+ * menu, drag reorders (To do only — the Done list owns its doneAt-descending
+ * order). The row is a button so the whole line stays the click target.
  */
 function TaskRow({
   task,
-  send,
+  onToggle,
+  onMenu,
   drag = false,
   onDragState,
   onDragSettled,
 }: {
   task: Task
-  send: (action: JsonValue) => void
+  onToggle: (task: Task) => void
+  onMenu: (event: ReactMouseEvent, task: Task) => void
   drag?: boolean
   onDragState?: (active: boolean) => void
   onDragSettled?: () => void
 }) {
-  const hint = task.done ? 'Click to reopen · right-click to delete' : 'Click to complete · drag to reorder · right-click to delete'
+  const hint = task.done
+    ? 'Click to reopen · right-click for options'
+    : 'Click to complete · drag to reorder · right-click for options'
 
   const body = (
     <>
@@ -250,13 +304,10 @@ function TaskRow({
     className: 'jwf-task',
     'data-done': task.done,
     title: hint,
-    onClick: () => send({ type: 'toggle', id: task.id }),
-    // Right-click is the delete gesture — the only way a row grows a second
-    // action without growing a second visible control.
-    onContextMenu: (event: { preventDefault(): void }) => {
-      event.preventDefault()
-      send({ type: 'remove', id: task.id })
-    },
+    onClick: () => onToggle(task),
+    // Right-click OPENS the menu; deletion happens from its Delete item, so
+    // the destructive act always has its own deliberate click.
+    onContextMenu: (event: ReactMouseEvent) => onMenu(event, task),
   }
 
   if (drag) {

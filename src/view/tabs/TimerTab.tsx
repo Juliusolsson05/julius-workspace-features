@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react'
 
 import { Chime } from '../../engines/timer/alert'
 import type { TimerState } from '../../engines/timer/types'
+import { Sfx } from '../sounds'
 import { CurrentTime } from '../components/CurrentTime'
 import { DurationPicker } from '../components/DurationPicker'
 import { ReminderAlert } from '../components/ReminderAlert'
@@ -40,16 +41,22 @@ export function TimerTab({
   }, [send])
 
   const chime = useRef<Chime | null>(null)
+  // Short transition voices (start lift, completion arpeggio). The REMINDER
+  // keeps the repeating Chime below — a reminder must keep demanding
+  // attention, a completed session needs to be heard once, warmly.
+  const sfx = useRef<Sfx | null>(null)
   const previousPhase = useRef<TimerState['phase'] | null>(null)
   useEffect(() => {
     chime.current ??= new Chime()
+    sfx.current ??= new Sfx()
     const enteredReminder = state.phase === 'reminding'
       && previousPhase.current !== 'reminding'
     const finishedWhileOpen = state.phase === 'finished'
       && previousPhase.current != null
       && previousPhase.current !== 'finished'
-    if (enteredReminder || finishedWhileOpen) chime.current.play()
-    else if (state.phase !== 'reminding') chime.current.stop()
+    if (enteredReminder) chime.current.play()
+    else if (finishedWhileOpen) sfx.current.timerComplete()
+    if (state.phase !== 'reminding') chime.current.stop()
     previousPhase.current = state.phase
   }, [state.phase])
   useEffect(() => () => chime.current?.stop(), [])
@@ -117,7 +124,12 @@ export function TimerTab({
             <DurationPicker
               totalSeconds={state.totalSeconds}
               onSelect={minutes => send({ type: 'setDuration', minutes })}
-              onStart={() => send({ type: 'start' })}
+              onStart={() => {
+                // Immediate audible confirmation on the click itself — the
+                // engine round-trip is not the feedback channel.
+                sfx.current?.timerStart()
+                send({ type: 'start' })
+              }}
             />
             <ReminderManager
               reminders={state.reminders}
