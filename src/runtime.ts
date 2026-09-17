@@ -4,8 +4,11 @@ import type { JsonValue, RuntimeContext } from 'agent-code-extension-api'
 import { TimerEngine } from './engines/timer/TimerEngine'
 import type { PersistedTimer, TimerState } from './engines/timer/types'
 import { TasksEngine } from './engines/tasks/TasksEngine'
-import type { PersistedTasks, TasksState } from './engines/tasks/types'
+import type { PersistedTasks } from './engines/tasks/types'
 import { MAX_TASK_TEXT_CHARS } from './engines/tasks/types'
+import type { TabId, WorkspaceState } from './types'
+
+export type { TabId, WorkspaceState }
 
 // Storage keys. 'session', 'tasks' and 'activeTab' are bare because the host
 // namespaces extension storage by extension id — two extensions may both use a
@@ -18,17 +21,6 @@ const DEFAULT_MINUTES_KEY = 'julius-workspace-features.defaultMinutes'
 const INHERIT_THEME_KEY = 'julius-workspace-features.inheritTheme'
 
 const VIEW_ID = 'julius-workspace-features.main'
-
-export type TabId = 'timer' | 'tasks'
-
-/** The one published shape. Both engines' state rides a single view, so the
- *  tab shell re-renders from one subscription and the pane reopens exactly
- *  where the user left it. */
-export type WorkspaceState = {
-  activeTab: TabId
-  timer: TimerState
-  tasks: TasksState
-}
 
 type TimerAction =
   | { type: 'setDuration'; minutes: number }
@@ -211,7 +203,7 @@ export default defineRuntime({
       const savedTab = await context.api.storage.get<JsonValue>(ACTIVE_TAB_KEY)
       // tabFrom throws on garbage; a saved tab this runtime never wrote must not
       // brick the pane, so fall back to the timer lane on anything invalid.
-      activeTab = tabFrom({ tab: savedTab })
+      activeTab = savedTab === undefined ? 'timer' : tabFrom({ tab: savedTab })
     } catch {
       activeTab = 'timer'
     }
