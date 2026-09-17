@@ -52,7 +52,22 @@
   box-sizing: border-box;
 }
 
-.jwf button {
+/*
+ * WHY the element resets are wrapped in :where(): a plain `.jwf button`
+ * selector has specificity 0,1,1, which BEATS every single-class component
+ * rule below (.tm-preset, .tm-primary, .tm-circle, .jwf-task, .jwf-filter,
+ * .jwf-subtab are 0,1,0). The reset then silently wins for border,
+ * background, padding and colour — duration chips render as bare text,
+ * Start focus loses its pill, task rows lose their padding, and (in v0.1)
+ * the checkbox collapsed entirely. :where() contributes zero specificity,
+ * so any component class overrides these defaults no matter where it
+ * appears in the file.
+ *
+ * Ported from agent-code-timer 59c868f (v0.4.1, their issue #3): this
+ * extension was ported from a checkout that predated that fix and inherited
+ * the bug verbatim — the same symptoms hit twice for the same reason.
+ */
+:where(.jwf button) {
   font-family: inherit;
   cursor: pointer;
   border: none;
@@ -63,7 +78,7 @@
   outline: none;
 }
 
-.jwf input {
+:where(.jwf input) {
   font-family: inherit;
   outline: none;
 }
