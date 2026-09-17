@@ -203,6 +203,38 @@ test('tasks persist, publish through the combined state, and survive reactivatio
   assert.equal(fixture.publications.at(-1).state.tasks.tasks.length, 1)
 })
 
+test('reorder rewrites the open order and malformed payloads reject', async () => {
+  const fixture = context()
+  await runtime.activate(fixture.value)
+  const action = fixture.requests.get('tasksAction')
+  await action({ type: 'add', text: 'first' }, view())
+  await action({ type: 'add', text: 'second' }, view())
+  const [first, second] = fixture.publications.at(-1).state.tasks.tasks
+  assert.deepEqual(
+    fixture.publications.at(-1).state.tasks.tasks.map(task => task.text),
+    ['first', 'second'],
+  )
+
+  await action({ type: 'reorder', ids: [second.id, first.id] }, view())
+  assert.deepEqual(
+    fixture.publications.at(-1).state.tasks.tasks.map(task => task.text),
+    ['second', 'first'],
+  )
+  assert.deepEqual(fixture.storage.get('tasks').tasks.map(task => task.text), ['second', 'first'])
+
+  const before = fixture.publications.at(-1).state
+  for (const invalid of [
+    { type: 'reorder' },
+    { type: 'reorder', ids: 'nope' },
+    { type: 'reorder', ids: [first.id, 42] },
+  ]) await assert.rejects(action(invalid, view()), /Invalid tasks action/)
+  // Shape-valid but non-permutation payloads reach the engine and no-op: []
+  // is the exact permutation of an empty list, so it must stay legal.
+  await action({ type: 'reorder', ids: [first.id] }, view())
+  await action({ type: 'reorder', ids: [] }, view())
+  assert.deepEqual(fixture.publications.at(-1).state, before)
+})
+
 test('selectTab persists the lane choice and rejects unknown tabs', async () => {
   const fixture = context({ activeTab: 'tasks' })
   await runtime.activate(fixture.value)

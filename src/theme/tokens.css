@@ -506,7 +506,8 @@
   padding-right: 4px;
 }
 
-/* The row IS the toggle — full-width button, text-left, no chrome. */
+/* The row IS the toggle — full-width button, text-left, no chrome. Text is
+   unselectable because the whole row is also a drag handle. */
 .jwf-task {
   display: flex;
   align-items: baseline;
@@ -518,6 +519,7 @@
   border-radius: 8px;
   font-size: 14px;
   line-height: 1.45;
+  user-select: none;
   transition: background 0.15s ease;
 }
 

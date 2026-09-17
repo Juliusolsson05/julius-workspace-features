@@ -1,5 +1,5 @@
-import { AnimatePresence, motion } from 'framer-motion'
-import { useState } from 'react'
+import { AnimatePresence, motion, Reorder } from 'framer-motion'
+import { useEffect, useRef, useState } from 'react'
 
 import type { JsonValue } from 'agent-code-extension-api'
 import type { Task, TasksState } from '../../engines/tasks/types'
@@ -33,15 +33,15 @@ function formatDoneAt(doneAt: number): string {
 /**
  * The Tasks lane. Two subtabs over one published array:
  *
- *   To do — the input and the open lines. Click a line to complete it: it
- *           leaves immediately. Backspace on the empty input removes the last
- *           open task. Deliberately nothing else renders here.
+ *   To do — the input and the open lines. Click a line to complete it; drag a
+ *           line to reorder; right-click to delete. Backspace on the empty
+ *           input removes the last open task.
  *   Done  — completed lines, struck through, with a completion stamp and date
- *           filters. Click a line to reopen it.
+ *           filters. Click a line to reopen it; right-click to delete.
  *
- * There is no checkbox anywhere: the line itself is the toggle, which is one
- * affordance instead of two and removes the custom checkmark CSS that v0.1's
- * rendering hung on.
+ * There is no checkbox anywhere: the line itself is the toggle, one affordance
+ * instead of two, and no per-row delete button — right-click is the delete
+ * gesture in both lists, which keeps every row a single clean line of text.
  */
 export function TasksTab({
   state,
@@ -64,6 +64,39 @@ export function TasksTab({
     if (doneFilter === 'all' || task.doneAt == null) return true
     return task.doneAt >= (doneFilter === 'today' ? startOfToday() : Date.now() - 7 * 86_400_000)
   })
+
+  // ── Drag reorder ──────────────────────────────────────────────────────────
+  // framer's Reorder commits continuously through onReorder, but a request per
+  // drag frame would spam the runtime. So the drag lives in a local override:
+  // onReorder only updates the override, and the SINGLE engine mutation fires
+  // on drag end. The ref mirrors the override so the settle handler reads the
+  // final order without a stale closure; `dragging` distinguishes "published
+  // state changed" (adopt it) from "we are mid-drag" (the override wins).
+  const dragging = useRef(false)
+  const dragOrderRef = useRef<Task[] | null>(null)
+  const [dragOrder, setDragOrderState] = useState<Task[] | null>(null)
+  const setDragOrder = (next: Task[]) => {
+    dragOrderRef.current = next
+    setDragOrderState(next)
+  }
+  useEffect(() => {
+    if (!dragging.current) {
+      dragOrderRef.current = null
+      setDragOrderState(null)
+    }
+  }, [state.tasks])
+  const openView = dragOrder ?? open
+
+  const settleDrag = () => {
+    dragging.current = false
+    const next = dragOrderRef.current
+    dragOrderRef.current = null
+    setDragOrderState(null)
+    if (!next) return
+    // The engine's reorder wants the FULL id permutation; done tasks keep
+    // their storage order behind the reordered open ones.
+    send({ type: 'reorder', ids: [...next.map(task => task.id), ...done.map(task => task.id)] })
+  }
 
   const submit = () => {
     const trimmed = draft.trim()
@@ -99,13 +132,26 @@ export function TasksTab({
 
       {subTab === 'todo' ? (
         <>
-          <div className="jwf-task-list" role="list">
+          <Reorder.Group
+            axis="y"
+            values={openView}
+            onReorder={next => setDragOrder(next)}
+            className="jwf-task-list"
+            as="div"
+          >
             <AnimatePresence initial={false}>
-              {open.map(task => (
-                <TaskRow key={task.id} task={task} send={send} />
+              {openView.map(task => (
+                <TaskRow
+                  key={task.id}
+                  task={task}
+                  send={send}
+                  drag
+                  onDragState={active => { dragging.current = active }}
+                  onDragSettled={settleDrag}
+                />
               ))}
             </AnimatePresence>
-          </div>
+          </Reorder.Group>
 
           <div className="jwf-task-input-row">
             <input
@@ -129,7 +175,7 @@ export function TasksTab({
                   event.preventDefault()
                   submit()
                 } else if (event.key === 'Backspace' && draft.length === 0) {
-                  const last = open.at(-1)
+                  const last = openView.at(-1)
                   if (last) send({ type: 'remove', id: last.id })
                 }
               }}
@@ -171,26 +217,81 @@ export function TasksTab({
   )
 }
 
-/** One line, one action. The row is a button so the whole line is clickable —
- *  that click is the only completion affordance in either subtab. */
-function TaskRow({ task, send }: { task: Task; send: (action: JsonValue) => void }) {
+/**
+ * One line, two gestures: click toggles, right-click deletes, drag reorders
+ * (To do only — the Done list owns its doneAt-descending order). The row is a
+ * button so the whole line stays the click target.
+ */
+function TaskRow({
+  task,
+  send,
+  drag = false,
+  onDragState,
+  onDragSettled,
+}: {
+  task: Task
+  send: (action: JsonValue) => void
+  drag?: boolean
+  onDragState?: (active: boolean) => void
+  onDragSettled?: () => void
+}) {
+  const hint = task.done ? 'Click to reopen · right-click to delete' : 'Click to complete · drag to reorder · right-click to delete'
+
+  const body = (
+    <>
+      <span className="jwf-task-text">{task.text}</span>
+      {task.done && task.doneAt != null ? (
+        <span className="jwf-task-date">{formatDoneAt(task.doneAt)}</span>
+      ) : null}
+    </>
+  )
+
+  const shared = {
+    className: 'jwf-task',
+    'data-done': task.done,
+    title: hint,
+    onClick: () => send({ type: 'toggle', id: task.id }),
+    // Right-click is the delete gesture — the only way a row grows a second
+    // action without growing a second visible control.
+    onContextMenu: (event: { preventDefault(): void }) => {
+      event.preventDefault()
+      send({ type: 'remove', id: task.id })
+    },
+  }
+
+  if (drag) {
+    return (
+      <Reorder.Item
+        as="button"
+        type="button"
+        value={task}
+        {...shared}
+        // onDragEnd fires after the final onReorder, so the parent's mirrored
+        // ref already holds the settled order when this calls settleDrag.
+        onDragStart={() => onDragState?.(true)}
+        onDragEnd={() => onDragSettled?.()}
+        initial={{ opacity: 0, x: -6 }}
+        animate={{ opacity: 1, x: 0 }}
+        exit={{ opacity: 0, x: 6 }}
+        transition={{ duration: 0.16 }}
+        style={{ position: 'relative' }}
+      >
+        {body}
+      </Reorder.Item>
+    )
+  }
+
   return (
     <motion.button
       type="button"
       role="listitem"
-      className="jwf-task"
-      data-done={task.done}
-      title={task.done ? 'Reopen this task' : 'Complete this task'}
-      onClick={() => send({ type: 'toggle', id: task.id })}
+      {...shared}
       initial={{ opacity: 0, x: -6 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 6 }}
       transition={{ duration: 0.16 }}
     >
-      <span className="jwf-task-text">{task.text}</span>
-      {task.done && task.doneAt != null ? (
-        <span className="jwf-task-date">{formatDoneAt(task.doneAt)}</span>
-      ) : null}
+      {body}
     </motion.button>
   )
 }

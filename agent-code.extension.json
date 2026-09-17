@@ -2,7 +2,7 @@
   "id": "julius-workspace-features",
   "name": "Workspace Features",
   "description": "One lane with tabs: the focus timer (ported from agent-code-timer) and a minimal task list. Keeps running when the panel is closed.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "apiVersion": 2,
   "entry": "dist/runtime.js",
   "keywords": [
