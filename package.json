@@ -1,7 +1,7 @@
 {
   "name": "julius-workspace-features",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.3.1",
   "type": "module",
   "description": "Personal Agent Code workspace lane: focus timer (ported from agent-code-timer) and a minimal task list behind one tabbed panel",
   "scripts": {
