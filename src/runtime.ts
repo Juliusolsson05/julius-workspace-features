@@ -5,7 +5,7 @@ import { TimerEngine } from './engines/timer/TimerEngine'
 import type { PersistedTimer, TimerState } from './engines/timer/types'
 import { TasksEngine } from './engines/tasks/TasksEngine'
 import type { PersistedTasks } from './engines/tasks/types'
-import { MAX_TASKS, MAX_TASK_TEXT_CHARS } from './engines/tasks/types'
+import { MAX_TASKS, MAX_TASK_TEXT_CHARS, isValidDueAt } from './engines/tasks/types'
 import type { TabId, WorkspaceState } from './types'
 
 export type { TabId, WorkspaceState }
@@ -20,7 +20,10 @@ const ACTIVE_TAB_KEY = 'activeTab'
 const DEFAULT_MINUTES_KEY = 'julius-workspace-features.defaultMinutes'
 const INHERIT_THEME_KEY = 'julius-workspace-features.inheritTheme'
 
-const VIEW_ID = 'julius-workspace-features.main'
+// The same UI ships as two contributed surfaces — the lane pane and a modal —
+// and every publication must reach whichever frames exist, so the publisher
+// below fans out to all of them rather than naming one.
+const VIEW_IDS = ['julius-workspace-features.main', 'julius-workspace-features.modal'] as const
 
 type TimerAction =
   | { type: 'setDuration'; minutes: number }
@@ -35,10 +38,14 @@ type TimerAction =
   | { type: 'syncSettings' }
 
 type TasksAction =
-  | { type: 'add'; text: string }
+  | { type: 'add'; text: string; parentId?: string }
   | { type: 'toggle'; id: string }
+  | { type: 'edit'; id: string; text: string }
+  | { type: 'setDue'; id: string; dueAt: number | null }
   | { type: 'remove'; id: string }
   | { type: 'reorder'; ids: string[] }
+  | { type: 'clearCompleted' }
+  | { type: 'undo' }
 
 function record(value: JsonValue): Record<string, JsonValue> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -102,7 +109,27 @@ function tasksActionFrom(input: JsonValue): TasksAction {
     case 'add':
       if (typeof value.text === 'string' && value.text.trim().length > 0
         && value.text.trim().length <= MAX_TASK_TEXT_CHARS) {
-        return { type: value.type, text: value.text }
+        // parentId is optional; when present it must be a plain non-empty id.
+        // The engine owns the deeper rules (exists, top-level, cap).
+        if (value.parentId === undefined) return { type: value.type, text: value.text }
+        if (typeof value.parentId === 'string' && value.parentId.length > 0) {
+          return { type: value.type, text: value.text, parentId: value.parentId }
+        }
+      }
+      break
+    case 'edit':
+      if (typeof value.id === 'string' && value.id.length > 0
+        && typeof value.text === 'string' && value.text.trim().length > 0
+        && value.text.trim().length <= MAX_TASK_TEXT_CHARS) {
+        return { type: value.type, id: value.id, text: value.text }
+      }
+      break
+    case 'setDue':
+      // Calendar-day epochs or an explicit null to clear; the bounds live in
+      // one place (types.ts) shared with the engine's own validation.
+      if (typeof value.id === 'string' && value.id.length > 0
+        && (value.dueAt === null || isValidDueAt(value.dueAt))) {
+        return { type: value.type, id: value.id, dueAt: value.dueAt }
       }
       break
     case 'toggle':
@@ -123,6 +150,9 @@ function tasksActionFrom(input: JsonValue): TasksAction {
         return { type: value.type, ids: value.ids as string[] }
       }
       break
+    case 'clearCompleted':
+    case 'undo':
+      return { type: value.type }
   }
   throw new Error('Invalid tasks action.')
 }
@@ -224,13 +254,17 @@ export default defineRuntime({
 
     // One publisher over both engines. Each engine notifies independently (the
     // timer ticks, tasks mutate), and either notification republishes the FULL
-    // combined state — views.publish replaces the latest state wholesale, so a
-    // partial publish would blank the other lane's slice.
-    const publish = () => context.views.publish(VIEW_ID, {
-      activeTab,
-      timer: timer.snapshot(),
-      tasks: tasks.snapshot(),
-    })
+    // combined state to EVERY contributed surface — views.publish replaces the
+    // latest state per view id, so a partial publish would blank the other
+    // lane's slice, and a single-id publish would leave the modal surface
+    // frozen at its last state.
+    const publish = () => Promise.all(
+      VIEW_IDS.map(viewId => context.views.publish(viewId, {
+        activeTab,
+        timer: timer.snapshot(),
+        tasks: tasks.snapshot(),
+      })),
+    )
     timerEngine = timer
     tasksEngine = tasks
     const unsubscribeTimer = timer.subscribe(() => { void publish().catch(() => {}) })
@@ -257,10 +291,14 @@ export default defineRuntime({
     context.registerRequest('tasksAction', async input => {
       const action = tasksActionFrom(input)
       switch (action.type) {
-        case 'add': tasks.add(action.text); break
+        case 'add': tasks.add(action.text, action.parentId); break
         case 'toggle': tasks.toggle(action.id); break
+        case 'edit': tasks.edit(action.id, action.text); break
+        case 'setDue': tasks.setDue(action.id, action.dueAt); break
         case 'remove': tasks.remove(action.id); break
         case 'reorder': tasks.reorder(action.ids); break
+        case 'clearCompleted': tasks.clearCompleted(); break
+        case 'undo': tasks.undo(); break
       }
       return tasks.snapshot()
     })
