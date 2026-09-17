@@ -19,6 +19,8 @@ test('add trims text, appends in order, and leaves done false', () => {
   assert.equal(snapshot.tasks.length, 2)
   assert.equal(snapshot.tasks[0].text, 'first')
   assert.equal(snapshot.tasks[0].done, false)
+  // A fresh task carries no completion time; only completing sets it.
+  assert.equal(snapshot.tasks[0].doneAt, null)
   assert.equal(snapshot.tasks[1].text, 'second')
   // Save fires per mutation, not per read.
   assert.equal(saved.length, 2)
@@ -60,11 +62,15 @@ test('toggle flips exactly one task and remove drops exactly one', () => {
     engine.snapshot().tasks.map(task => task.done),
     [true, false],
   )
+  // Completing stamps a finite epoch; reopening clears it back to null.
+  assert.equal(typeof engine.snapshot().tasks[0].doneAt, 'number')
+  assert.ok(Number.isFinite(engine.snapshot().tasks[0].doneAt))
   engine.toggle(a.id)
   assert.deepEqual(
     engine.snapshot().tasks.map(task => task.done),
     [false, false],
   )
+  assert.equal(engine.snapshot().tasks[0].doneAt, null)
   engine.remove(a.id)
   assert.deepEqual(
     engine.snapshot().tasks.map(task => task.text),
@@ -91,6 +97,10 @@ test('restore accepts a valid v1 payload and ignores anything malformed', () => 
     ['read', 'write'],
   )
   assert.equal(engine.snapshot().tasks[0].done, true)
+  // v1 had no timestamps: a done task migrates with doneAt = migration time,
+  // an open one with null. The date is falsified-but-useful — see restore().
+  assert.equal(typeof engine.snapshot().tasks[0].doneAt, 'number')
+  assert.equal(engine.snapshot().tasks[1].doneAt, null)
   // Restore itself does not write; the next mutation persists the merged state.
   assert.equal(saved.length, 0)
   engine.add('third')
@@ -107,6 +117,8 @@ test('restore accepts a valid v1 payload and ignores anything malformed', () => 
     { version: 1, tasks: [{ id: 'x' }] },
     { version: 1, tasks: [{ id: 'x', text: 'y'.repeat(201), done: false }] },
     { version: 1, tasks: [{ id: 'x', text: 'y', done: 'yes' }] },
+    { version: 2, tasks: [{ id: 'x', text: 'y', done: true, doneAt: 'when' }] },
+    { version: 2, tasks: [{ id: 'x', text: 'y', done: false, doneAt: 123 }] },
   ]) {
     garbage.engine.restore(invalid)
   }
@@ -143,4 +155,22 @@ test('subscribe does not fire synchronously on attachment', () => {
   engine.add('a')
   assert.equal(fired, 1)
   engine.dispose()
+})
+
+test('v2 persistence round-trips the exact completion timestamp', () => {
+  const { engine, saved } = fixture()
+  engine.add('a')
+  engine.toggle(engine.snapshot().tasks[0].id)
+  const persisted = saved.at(-1)
+  assert.equal(persisted.version, 2)
+  assert.equal(typeof persisted.tasks[0].doneAt, 'number')
+
+  const reborn = fixture()
+  reborn.engine.restore(persisted)
+  assert.equal(reborn.engine.snapshot().tasks[0].doneAt, persisted.tasks[0].doneAt)
+  // The stamp survives reopening and re-completing replaces it with a later one.
+  reborn.engine.toggle(persisted.tasks[0].id)
+  reborn.engine.toggle(persisted.tasks[0].id)
+  assert.ok(reborn.engine.snapshot().tasks[0].doneAt >= persisted.tasks[0].doneAt)
+  reborn.engine.dispose()
 })

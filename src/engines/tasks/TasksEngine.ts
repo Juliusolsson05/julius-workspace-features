@@ -1,6 +1,5 @@
 import type { PersistedTasks, Task, TasksState } from './types'
 import { MAX_TASKS, MAX_TASK_TEXT_CHARS } from './types'
-
 export type TasksEngineHost = {
   /** Persist. Called on every mutation — shutdown has no persistence guarantee. */
   save(data: PersistedTasks): void
@@ -29,7 +28,7 @@ export class TasksEngine {
   // ---------------------------------------------------------------- lifecycle
 
   restore(data: PersistedTasks | undefined): void {
-    if (!data || data.version !== 1 || !Array.isArray(data.tasks)) return
+    if (!data || !Array.isArray(data.tasks)) return
     // Defensive field-level validation: storage is durable state we do not
     // control the provenance of (a hand-edited file, a future schema). One bad
     // row must not poison the whole list — but silently dropping only the bad
@@ -42,7 +41,26 @@ export class TasksEngine {
       if (typeof task.text !== 'string' || task.text.length === 0) return
       if (task.text.length > MAX_TASK_TEXT_CHARS) return
       if (typeof task.done !== 'boolean') return
-      restored.push({ id: task.id, text: task.text, done: task.done })
+      let doneAt: number | null = null
+      if (data.version === 1) {
+        // v1 predates timestamps. A done task migrates with doneAt = now: the
+        // date is falsified, but the alternative — doneAt: null on a done task —
+        // hides it from every date filter forever, which is strictly worse for
+        // a personal list. An open task correctly starts at null.
+        doneAt = task.done ? Date.now() : null
+      } else if (data.version === 2) {
+        // Incoherent stamps reject the whole restore rather than being silently
+        // normalized: doneAt must be a finite epoch exactly when done is true.
+        if (task.done) {
+          if (typeof task.doneAt !== 'number' || !Number.isFinite(task.doneAt)) return
+          doneAt = task.doneAt
+        } else if (task.doneAt !== null) {
+          return
+        }
+      } else {
+        return
+      }
+      restored.push({ id: task.id, text: task.text, done: task.done, doneAt })
     }
     this.tasks = restored
     this.emit()
@@ -85,15 +103,21 @@ export class TasksEngine {
     // A full list drops the add rather than evicting the oldest task: silent
     // data loss in a todo list is the one failure this tool must never have.
     if (this.tasks.length >= MAX_TASKS) return
-    this.tasks = [...this.tasks, { id: crypto.randomUUID(), text: trimmed, done: false }]
+    this.tasks = [...this.tasks, { id: crypto.randomUUID(), text: trimmed, done: false, doneAt: null }]
     this.commit()
   }
 
   toggle(id: string): void {
     if (this.tasks.every(task => task.id !== id)) return
-    this.tasks = this.tasks.map(task =>
-      task.id === id ? { ...task, done: !task.done } : task,
-    )
+    this.tasks = this.tasks.map(task => {
+      if (task.id !== id) return task
+      // Completing stamps the wall clock; reopening clears it. A reopened task
+      // that completes again gets a fresh stamp — the Done filters group on the
+      // most recent completion, which is the date the user actually cares about.
+      return task.done
+        ? { ...task, done: false, doneAt: null }
+        : { ...task, done: true, doneAt: Date.now() }
+    })
     this.commit()
   }
 
@@ -106,7 +130,9 @@ export class TasksEngine {
   // ---------------------------------------------------------------- internals
 
   private persisted(): PersistedTasks {
-    return { version: 1, tasks: this.tasks }
+    // Always v2 once this build has run: the timestamps are load-bearing for
+    // the Done filters, so there is no value in writing a v1 shape back.
+    return { version: 2, tasks: this.tasks }
   }
 
   /** Emit + persist. The single mutation exit path. */
