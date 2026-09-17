@@ -55,6 +55,10 @@ export function TasksTab({
   const [dueEditingId, setDueEditingId] = useState<string | null>(null)
   const [subInputParentId, setSubInputParentId] = useState<string | null>(null)
   const [undoToast, setUndoToast] = useState<string | null>(null)
+  // Two-step confirm for Clear completed: the first click arms it, the second
+  // within the window executes. Inline, no dialog — bulk destruction deserves
+  // one extra beat, not a modal.
+  const [clearArmed, setClearArmed] = useState(false)
 
   // One shared voice for the lane, created lazily on first gesture so the
   // AudioContext is born inside a user activation (autoplay policy).
@@ -140,7 +144,10 @@ export function TasksTab({
   const flashUndo = (label: string) => {
     setUndoToast(label)
     if (undoToastTimer != null) window.clearTimeout(undoToastTimer)
-    undoToastTimer = window.setTimeout(() => setUndoToast(null), 5_000)
+    // 8s: long enough to register the toast after the interaction, short
+    // enough not to linger — and the persistent canUndo chip below is the
+    // real net once this expires.
+    undoToastTimer = window.setTimeout(() => setUndoToast(null), 8_000)
   }
 
   const toggle = (task: Task) => {
@@ -166,6 +173,12 @@ export function TasksTab({
 
   const clearCompleted = () => {
     if (doneTop.length === 0) return
+    if (!clearArmed) {
+      setClearArmed(true)
+      window.setTimeout(() => setClearArmed(false), 3_000)
+      return
+    }
+    setClearArmed(false)
     voice().taskDelete()
     send({ type: 'clearCompleted' })
     flashUndo(`Cleared ${doneTop.length}`)
@@ -291,14 +304,10 @@ export function TasksTab({
                 if (event.key === 'Enter') {
                   event.preventDefault()
                   submit()
-                } else if (event.key === 'Backspace' && draft.length === 0) {
-                  const last = visibleOpen.at(-1)
-                  if (last) {
-                    voice().taskDelete()
-                    send({ type: 'remove', id: last.id })
-                    flashUndo('Deleted')
-                  }
                 }
+                // DELIBERATELY no Backspace-on-empty delete: a hidden keystroke
+                // that destroys work is how the last entry vanished on a
+                // misclick. Deletion lives in the menu, behind undo.
               }}
             />
           </div>
@@ -323,9 +332,13 @@ export function TasksTab({
               className="jwf-ghost-clear"
               onClick={clearCompleted}
               disabled={doneTop.length === 0}
-              title="Remove every completed task (undoable)"
+              title={
+                clearArmed
+                  ? 'Click again to remove every completed task'
+                  : 'Remove every completed task (two-click confirm, undoable)'
+              }
             >
-              Clear completed
+              {clearArmed ? 'Confirm clear?' : 'Clear completed'}
             </button>
           </div>
 
@@ -368,6 +381,13 @@ export function TasksTab({
           <span>{undoToast}</span>
           <button type="button" onClick={undo}>Undo</button>
         </div>
+      ) : state.canUndo ? (
+        // The quiet persistent net: the engine still holds a recoverable
+        // deletion even after the toast expired, so the affordance stays
+        // until the slot is consumed or replaced.
+        <button type="button" className="jwf-undo-chip" onClick={undo} title="Restore the last deleted tasks">
+          Deleted · Undo
+        </button>
       ) : null}
     </div>
   )

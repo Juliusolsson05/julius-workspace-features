@@ -230,13 +230,17 @@ test('a destructive action replaces the undo slot (single level)', () => {
   engine.add('b')
   const [a, b] = engine.snapshot().tasks
   engine.remove(a.id)
+  // canUndo is published state: the view surfaces a recoverable-deletion
+  // affordance for exactly as long as the slot holds something.
+  assert.equal(engine.snapshot().canUndo, true)
   engine.remove(b.id)
   engine.undo()
-  // Only the LAST removal is restorable; 'a' is gone for good.
   assert.deepEqual(
     engine.snapshot().tasks.map(task => task.text),
     ['b'],
   )
+  // The slot is consumed: nothing left to advertise.
+  assert.equal(engine.snapshot().canUndo, false)
   engine.dispose()
 })
 

@@ -241,7 +241,7 @@ class I {
    * only in emit(), which every mutation routes through.
    */
   snapshot() {
-    return this.cachedSnapshot || (this.cachedSnapshot = { tasks: this.tasks }), this.cachedSnapshot;
+    return this.cachedSnapshot || (this.cachedSnapshot = { tasks: this.tasks, canUndo: this.undoEntry != null }), this.cachedSnapshot;
   }
   // ------------------------------------------------------------------ actions
   add(e, t) {
