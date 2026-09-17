@@ -116,52 +116,52 @@ Malformed input rejects; valid state is untouched on rejection.
 
 ### Task 2: Timer engine port (TDD — ported tests must pass against ported engine)
 
-- [ ] Copy `src/engine/{TimerEngine.ts,types.ts,alert.ts}` → `src/engines/timer/` byte-identical
-- [ ] Copy `tests/engine.test.mjs` → fix import to `../src/engines/timer/TimerEngine.ts`
-- [ ] Copy `dev/test.mjs`, `tsconfig.json`, `vite.config.ts`, `.gitignore`, `src/vite-env.d.ts`
-- [ ] Write `package.json` (rename + identical deps/scripts)
-- [ ] `npm install`
-- [ ] `npm test` → all 7 ported engine tests PASS
-- [ ] Commit: `feat(timer): port the headless timer engine and its tests 1:1`
+- [x] Copy `src/engine/{TimerEngine.ts,types.ts,alert.ts}` → `src/engines/timer/` byte-identical
+- [x] Copy `tests/engine.test.mjs` → fix import to `../src/engines/timer/TimerEngine.ts`
+- [x] Copy `dev/test.mjs`, `tsconfig.json`, `vite.config.ts`, `.gitignore`, `src/vite-env.d.ts`
+- [x] Write `package.json` (rename + identical deps/scripts)
+- [x] `npm install`
+- [x] `npm test` → all 7 ported engine tests PASS
+- [x] Commit: `feat(timer): port the headless timer engine and its tests 1:1`
 
 ### Task 3: TasksEngine (TDD — test first)
 
-- [ ] Write `tests/tasks.test.mjs` covering: add trims and appends; add ignores empty/oversized/over-count; toggle flips one; remove drops one; restore accepts valid v1 and ignores garbage; snapshot identity is stable between emits; save fires on mutation only; throwing subscriber is isolated
-- [ ] Run `npm test` → tasks tests FAIL (module absent)
-- [ ] Implement `src/engines/tasks/types.ts` + `TasksEngine.ts`
-- [ ] `npm test` → PASS
-- [ ] Commit: `feat(tasks): add the minimal task engine`
+- [x] Write `tests/tasks.test.mjs` covering: add trims and appends; add ignores empty/oversized/over-count; toggle flips one; remove drops one; restore accepts valid v1 and ignores garbage; snapshot identity is stable between emits; save fires on mutation only; throwing subscriber is isolated
+- [x] Run `npm test` → tasks tests FAIL (module absent)
+- [x] Implement `src/engines/tasks/types.ts` + `TasksEngine.ts`
+- [x] `npm test` → PASS
+- [x] Commit: `feat(tasks): add the minimal task engine`
 
 ### Task 4: Combined runtime (TDD — reworked runtime tests)
 
-- [ ] Rework `tests/runtime.test.mjs`: ported assertions updated (ids/keys/request names) + new cases for tasksAction publish, selectTab persistence, combined `{ activeTab, timer, tasks }` shape, malformed tasks/tab actions rejecting
-- [ ] Run → FAIL (runtime absent)
-- [ ] Write `src/runtime.ts` (ported timer logic + tasks + tab)
-- [ ] `npm test` → PASS
-- [ ] Commit: `feat(runtime): own both engines and the selected tab in one v2 runtime`
+- [x] Rework `tests/runtime.test.mjs`: ported assertions updated (ids/keys/request names) + new cases for tasksAction publish, selectTab persistence, combined `{ activeTab, timer, tasks }` shape, malformed tasks/tab actions rejecting
+- [x] Run → FAIL (runtime absent)
+- [x] Write `src/runtime.ts` (ported timer logic + tasks + tab)
+- [x] `npm test` → PASS
+- [x] Commit: `feat(runtime): own both engines and the selected tab in one v2 runtime`
 
 ### Task 5: View shell + tabs + theme
 
-- [ ] Port `components/*` (import path fix), `theme/inherit.ts` (identical), `theme/injectStyles.ts` (id rename)
-- [ ] Write `theme/tokens.css`: ported token block on `.jwf` shell + tab bar + task styles
-- [ ] Write `view/shell/TabBar.tsx`, `view/tabs/TasksTab.tsx`, `view/WorkspaceView.tsx`
-- [ ] Port `TimerView.tsx` → `view/tabs/TimerTab.tsx` (props delta), `view/mount.tsx`, `src/view.ts`
-- [ ] `npm run build` (vite build + tsc --noEmit) → PASS
-- [ ] Commit: `feat(view): one lane with tabs hosting the timer and task list`
+- [x] Port `components/*` (import path fix), `theme/inherit.ts` (identical), `theme/injectStyles.ts` (id rename)
+- [x] Write `theme/tokens.css`: ported token block on `.jwf` shell + tab bar + task styles
+- [x] Write `view/shell/TabBar.tsx`, `view/tabs/TasksTab.tsx`, `view/WorkspaceView.tsx`
+- [x] Port `TimerView.tsx` → `view/tabs/TimerTab.tsx` (props delta), `view/mount.tsx`, `src/view.ts`
+- [x] `npm run build` (vite build + tsc --noEmit) → PASS
+- [x] Commit: `feat(view): one lane with tabs hosting the timer and task list`
 
 ### Task 6: Manifest + contract test
 
-- [ ] Write `agent-code.extension.json` (ids namespaced under `julius-workspace-features`)
-- [ ] Update `testing/extension-contract.test.mjs` to the new manifest; keep the AudioContext split invariant
-- [ ] `npm run test:extension` → PASS
-- [ ] Commit: `feat(manifest): declare the workspace panel and its commands`
+- [x] Write `agent-code.extension.json` (ids namespaced under `julius-workspace-features`)
+- [x] Update `testing/extension-contract.test.mjs` to the new manifest; keep the AudioContext split invariant
+- [x] `npm run test:extension` → PASS
+- [x] Commit: `feat(manifest): declare the workspace panel and its commands`
 
 ### Task 7: Build artifacts + verify
 
-- [ ] `NODE_ENV=production npm run build` → dist/ emitted
-- [ ] `npm run verify` (unit + production build + contract test) → PASS
-- [ ] Commit dist: `build: commit the v0.1.0 dist bundle`
-- [ ] README: install via folder load / `Juliusolsson05/julius-workspace-features` once pushed; note the old `timer` extension must be uninstalled
+- [x] `NODE_ENV=production npm run build` → dist/ emitted
+- [x] `npm run verify` (unit + production build + contract test) → PASS
+- [x] Commit dist: `build: commit the v0.1.0 dist bundle`
+- [x] README: install via folder load / `Juliusolsson05/julius-workspace-features` once pushed; note the old `timer` extension must be uninstalled
 
 ## Verification
 
