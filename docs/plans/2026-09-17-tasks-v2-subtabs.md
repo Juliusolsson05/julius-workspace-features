@@ -12,7 +12,7 @@
 
 - Tasks lane has a small subtab row: **To do** | **Done**.
 - To do: the input, and open task lines. Click a line → it completes and leaves the list. Backspace on the empty input removes the last open task. Nothing else — no counts, no checkboxes, no dates.
-- Done: completed lines, strikethrough + dim, a dim completion date on the right, and a filter row (Today / 7 days / All, default All). Click a line → it reopens (returns to To do, `doneAt` cleared). Backspace on the empty-ish focus target removes the last done task shown. The input is NOT rendered here.
+- Done: completed lines, strikethrough + dim, a dim completion date on the right, and a filter row (Today / 7 days / All, default All). Click a line → it reopens (returns to To do, `doneAt` cleared). The input is NOT rendered here.
 - The broken custom checkbox CSS is deleted, not restyled — click-the-line is the only completion affordance.
 
 ## Tasks
@@ -39,5 +39,5 @@
 ## Self-review notes
 
 - "Overlined" read as strikethrough (the standard completed affordance, matching v0.1.0's done style); noted in the release notes.
-- Done-subtab Backspace needs a focusable target to receive keys; the filter row buttons serve as the lane's key surface and the handler removes the last SHOWN done task (respects the active filter).
+- Done-subtab Backspace-delete was dropped during implementation: Done's only row action is click-to-reopen, which needs no keyboard delete target and keeps the archive read-mostly. Deleting stays a To do affordance (Backspace on the empty input).
 - No engine-level filter API — view-side projection keeps the transport and storage shapes unchanged.
