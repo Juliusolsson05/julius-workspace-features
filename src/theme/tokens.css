@@ -836,3 +836,24 @@
 .jwf-modal .jwf-tasks {
   max-height: 480px;
 }
+
+/* The persistent recoverable-deletion chip: quieter than the toast, visible
+   for as long as the engine can actually undo. */
+.jwf-undo-chip {
+  position: absolute;
+  right: 14px;
+  bottom: 54px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--tm-border);
+  background: var(--tm-surface);
+  color: var(--tm-faint);
+  font-size: 11px;
+  transition: color 0.15s ease, border-color 0.15s ease;
+  z-index: 4;
+}
+
+.jwf-undo-chip:hover {
+  color: var(--tm-fg);
+  border-color: var(--tm-dim);
+}

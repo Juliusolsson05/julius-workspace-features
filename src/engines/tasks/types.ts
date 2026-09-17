@@ -14,9 +14,14 @@ export type Task = {
 /**
  * Everything the view needs. A plain serializable object — API v2 publishes it
  * across the runtime boundary, so no methods and no live references.
+ *
+ * `canUndo` is derived engine state (a destructive action sits in the undo
+ * slot): the view surfaces a recoverable-delete affordance for as long as it
+ * holds, so a missed toast never means permanent loss.
  */
 export type TasksState = {
   tasks: Task[]
+  canUndo: boolean
 }
 
 /** v1 had no timestamps; v2 added doneAt; v3 adds parentId + dueAt. */

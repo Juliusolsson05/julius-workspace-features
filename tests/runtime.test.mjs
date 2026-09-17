@@ -74,7 +74,7 @@ test('startup restores an expired session, notifies without a view, and publishe
   const main = fixture.publications.filter(entry => entry.viewId === MAIN_VIEW).at(-1)
   const modal = fixture.publications.filter(entry => entry.viewId === MODAL_VIEW).at(-1)
   assert.equal(main.state.timer.phase, 'finished')
-  assert.deepEqual(main.state.tasks, { tasks: [] })
+  assert.deepEqual(main.state.tasks, { tasks: [], canUndo: false })
   assert.equal(main.state.activeTab, 'timer')
   // Same combined state reaches the modal surface — not a frozen copy.
   assert.deepEqual(modal.state, main.state)

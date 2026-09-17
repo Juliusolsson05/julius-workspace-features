@@ -130,7 +130,7 @@ export class TasksEngine {
    */
   snapshot(): TasksState {
     if (!this.cachedSnapshot) {
-      this.cachedSnapshot = { tasks: this.tasks }
+      this.cachedSnapshot = { tasks: this.tasks, canUndo: this.undoEntry != null }
     }
     return this.cachedSnapshot
   }

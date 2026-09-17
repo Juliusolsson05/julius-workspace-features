@@ -22,7 +22,7 @@ const EMPTY_WORKSPACE: WorkspaceState = {
     phase: 'idle', totalSeconds: 30 * 60, remainingSeconds: 30 * 60,
     reminders: [], activeReminderId: null, firedReminderKeys: [], inheritTheme: false,
   },
-  tasks: { tasks: [] },
+  tasks: { tasks: [], canUndo: false },
 }
 
 export function WorkspaceView({ context }: { context: ViewContext<WorkspaceState> }) {
