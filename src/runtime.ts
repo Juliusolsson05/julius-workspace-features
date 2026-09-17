@@ -5,7 +5,7 @@ import { TimerEngine } from './engines/timer/TimerEngine'
 import type { PersistedTimer, TimerState } from './engines/timer/types'
 import { TasksEngine } from './engines/tasks/TasksEngine'
 import type { PersistedTasks } from './engines/tasks/types'
-import { MAX_TASK_TEXT_CHARS } from './engines/tasks/types'
+import { MAX_TASKS, MAX_TASK_TEXT_CHARS } from './engines/tasks/types'
 import type { TabId, WorkspaceState } from './types'
 
 export type { TabId, WorkspaceState }
@@ -38,6 +38,7 @@ type TasksAction =
   | { type: 'add'; text: string }
   | { type: 'toggle'; id: string }
   | { type: 'remove'; id: string }
+  | { type: 'reorder'; ids: string[] }
 
 function record(value: JsonValue): Record<string, JsonValue> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -108,6 +109,18 @@ function tasksActionFrom(input: JsonValue): TasksAction {
     case 'remove':
       if (typeof value.id === 'string' && value.id.length > 0) {
         return { type: value.type, id: value.id }
+      }
+      break
+    case 'reorder':
+      // Shape only: a bounded array of non-empty strings. The engine enforces
+      // the stronger exact-permutation invariant; rejecting here would just
+      // duplicate that check with a toast attached.
+      if (Array.isArray(value.ids)
+        && value.ids.length <= MAX_TASKS
+        && value.ids.every(id => typeof id === 'string' && id.length > 0)) {
+        // The every() guard proved the element type; the cast only re-narrows
+        // what TypeScript's array-narrowing cannot express.
+        return { type: value.type, ids: value.ids as string[] }
       }
       break
   }
@@ -247,6 +260,7 @@ export default defineRuntime({
         case 'add': tasks.add(action.text); break
         case 'toggle': tasks.toggle(action.id); break
         case 'remove': tasks.remove(action.id); break
+        case 'reorder': tasks.reorder(action.ids); break
       }
       return tasks.snapshot()
     })

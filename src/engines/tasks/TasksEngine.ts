@@ -130,6 +130,27 @@ export class TasksEngine {
     this.commit()
   }
 
+  /**
+   * Reorder by the complete desired id sequence. Must be an exact permutation
+   * of the current task ids: a stale view that missed an add or delete would
+   * otherwise resurrect or drop tasks by rebuilding the array from its own
+   * outdated picture. Anything not an exact match is a silent no-op — same
+   * stance as unknown ids in toggle/remove.
+   */
+  reorder(ids: readonly string[]): void {
+    if (ids.length !== this.tasks.length) return
+    const byId = new Map(this.tasks.map(task => [task.id, task]))
+    const rebuilt: Task[] = []
+    const seen = new Set<string>()
+    for (const id of ids) {
+      if (seen.has(id) || !byId.has(id)) return
+      seen.add(id)
+      rebuilt.push(byId.get(id)!)
+    }
+    this.tasks = rebuilt
+    this.commit()
+  }
+
   // ---------------------------------------------------------------- internals
 
   private persisted(): PersistedTasks {

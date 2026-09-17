@@ -174,3 +174,30 @@ test('v2 persistence round-trips the exact completion timestamp', () => {
   assert.ok(reborn.engine.snapshot().tasks[0].doneAt >= persisted.tasks[0].doneAt)
   reborn.engine.dispose()
 })
+
+test('reorder rewrites the array only for an exact permutation', () => {
+  const { engine, saved } = fixture()
+  engine.add('a')
+  engine.add('b')
+  engine.add('c')
+  const [a, b, c] = engine.snapshot().tasks
+  engine.reorder([c.id, a.id, b.id])
+  assert.deepEqual(
+    engine.snapshot().tasks.map(task => task.text),
+    ['c', 'a', 'b'],
+  )
+  assert.equal(saved.length, 4)
+
+  // A stale view that missed an add or delete must not resurrect or drop
+  // tasks: anything short of an exact permutation is a silent no-op.
+  engine.reorder([a.id, b.id])
+  engine.reorder([a.id, b.id, c.id, a.id])
+  engine.reorder([a.id, b.id, 'ghost'])
+  engine.reorder([])
+  assert.deepEqual(
+    engine.snapshot().tasks.map(task => task.text),
+    ['c', 'a', 'b'],
+  )
+  assert.equal(saved.length, 4)
+  engine.dispose()
+})
